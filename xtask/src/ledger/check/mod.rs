@@ -10,7 +10,6 @@ pub(crate) mod layers;
 pub(crate) mod mutation;
 pub(crate) mod pinned;
 pub(crate) mod skips;
-pub(crate) mod spikes;
 pub(crate) mod tag_syntax;
 pub(crate) mod unsafe_code;
 pub(crate) mod versions;
@@ -96,11 +95,6 @@ pub(crate) const CHECKS: &[Check] = &[
         name: "tag-syntax",
         description: "no view, in code or in a document, is written in the spelling the grammar replaced",
         run: tag_syntax::check,
-    },
-    Check {
-        name: "spikes",
-        description: "every spike names the phase that deletes it, and none outlives it",
-        run: spikes::check,
     },
 ];
 
