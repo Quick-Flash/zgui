@@ -429,6 +429,28 @@ impl Stage {
         })
     }
 
+    /// Every shape the most recent frame's display list held inside `rect`, in painting order.
+    ///
+    /// The shapes of a drawing, whatever route the display list gave it: a vector item, a mark
+    /// item, a coverage sprite or a quad. The quads that are an element's background or border are
+    /// left out. See [`Frame::shapes_in`](crate::device::frame::Frame::shapes_in).
+    ///
+    /// # Panics
+    ///
+    /// Panics when nothing has been drawn yet.
+    pub fn shapes_in(
+        &self,
+        rect: zgui::geom::Rect<DevicePx, Device>,
+    ) -> Vec<crate::device::frame::Drawing> {
+        let boxes: Vec<_> = self
+            .census()
+            .nodes
+            .iter()
+            .filter_map(|node| node.rect)
+            .collect();
+        self.drawn(|frame| frame.shapes_in(rect, &boxes))
+    }
+
     /// Every glyph the most recent frame's display list held inside `rect`, in painting order.
     ///
     /// # Panics
