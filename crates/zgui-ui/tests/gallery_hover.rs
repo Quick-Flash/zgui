@@ -110,8 +110,8 @@ fn drive<'a>(
         let mut entered = false;
         let frame = std::time::Duration::from_millis(8);
         let check = |harness: &mut zgui_platform_headless::Harness<_>,
-                         when: String,
-                         fails: &mut Vec<String>| {
+                     when: String,
+                     fails: &mut Vec<String>| {
             harness.settle(16);
             for (label, rect) in labels.iter() {
                 let now = ink(log, *rect);

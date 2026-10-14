@@ -639,7 +639,7 @@ impl Scanout {
     /// Gives up on a completion that has not arrived, and carries on as though it had.
     ///
     /// Answers whether it gave up on one. A completion is the only thing that frees the buffer the
-    /// display was reading, so one that never arrives leaves [`Rotation::drawing`] refusing a
+    /// display was reading, so one that never arrives leaves `Rotation::drawing` refusing a
     /// buffer to every frame for the rest of the program — a display that goes dark and stays dark.
     /// The same state a session coming back recovers from, reached without anyone taking the
     /// terminal away.
