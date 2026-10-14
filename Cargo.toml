@@ -7,6 +7,8 @@ exclude = ["xtask/fixtures", "vendor"]
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+repository = "https://github.com/zortax/zgui"
+homepage = "https://zgui.zortax.de"
 
 # Every dependency of every crate is declared here and inherited with `foo.workspace = true`,
 # so a version, a feature set or a `default-features` decision exists in exactly one place.

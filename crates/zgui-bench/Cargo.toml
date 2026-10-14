@@ -3,6 +3,9 @@ name = "zgui-bench"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Benchmarks and reference workloads for zgui"
+repository.workspace = true
+homepage.workspace = true
 publish = false
 
 # L8 — the measurement harness. Every dependency is inherited from the paths below.

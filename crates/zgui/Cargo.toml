@@ -3,6 +3,9 @@ name = "zgui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Native Rust UI framework with fine-grained signals, CSS and a retained GPU renderer"
+repository.workspace = true
+homepage.workspace = true
 
 # L7 — runtime and tooling. Every dependency is inherited: `foo.workspace = true`.
 #

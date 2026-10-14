@@ -3,6 +3,9 @@ name = "zgui-a11y"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Accessibility tree for zgui documents, published through AccessKit"
+repository.workspace = true
+homepage.workspace = true
 
 # L5 — systems. Every dependency is inherited: `foo.workspace = true`.
 #

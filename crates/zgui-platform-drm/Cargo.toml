@@ -3,6 +3,9 @@ name = "zgui-platform-drm"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "zgui platform backend for a bare Linux console (DRM/KMS)"
+repository.workspace = true
+homepage.workspace = true
 
 # L2 — backends. Every dependency is inherited: `foo.workspace = true`.
 #

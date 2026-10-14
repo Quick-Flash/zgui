@@ -3,6 +3,9 @@ name = "probe"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Build canary that links every external engine on the pinned toolchain"
+repository.workspace = true
+homepage.workspace = true
 publish = false
 
 # probe is the stack-compiles canary: it exists to prove that every external engine still

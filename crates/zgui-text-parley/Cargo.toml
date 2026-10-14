@@ -3,6 +3,9 @@ name = "zgui-text-parley"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Text engine for zgui, built on Parley"
+repository.workspace = true
+homepage.workspace = true
 
 # L4 — engines. This is the one crate in the workspace that names a font engine, which is why
 # every other crate can be built, tested and reasoned about without one.
