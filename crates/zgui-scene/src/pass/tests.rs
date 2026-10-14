@@ -572,6 +572,36 @@ fn a_scene_with_a_backdrop_keeps_whole_regions() {
 }
 
 #[test]
+fn a_pass_past_the_edge_of_the_surface_overhangs_and_is_not_cut() {
+    let edge = viewport().width as f32;
+    let mut scene = Scene::new();
+    scene.begin_frame(viewport());
+    crate::pass::fixture::vector(
+        &mut scene,
+        0,
+        rect(edge - 40.0, 8.0, 80.0, 16.0),
+        ClipId::ROOT,
+    );
+    crate::pass::fixture::vector(&mut scene, 1, rect(16.0, 64.0, 32.0, 16.0), ClipId::ROOT);
+    scene.finish(&DamageSet::full());
+    let plan = scene.pass_plan();
+    assert_eq!(plan.len(), 1);
+    let pass = &plan.passes[0];
+    assert!(pass.overhangs, "the first item goes past the right edge");
+    assert!(!pass.clamped);
+    assert!(
+        !plan.is_cut(),
+        "the edge of the surface does not cut a pass"
+    );
+
+    let mut scene = Scene::new();
+    scene.begin_frame(viewport());
+    crate::pass::fixture::vector(&mut scene, 0, rect(16.0, 64.0, 32.0, 16.0), ClipId::ROOT);
+    scene.finish(&DamageSet::full());
+    assert!(!scene.pass_plan().passes[0].overhangs);
+}
+
+#[test]
 fn full_damage_cuts_nothing() {
     let mut scene = wide(true);
     scene.finish(&DamageSet::full());

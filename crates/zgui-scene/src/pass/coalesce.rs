@@ -240,6 +240,8 @@ fn record(
         return;
     }
     let clamped = region != whole;
+    // The region stops at the edge of the surface, and the ink of an item can go past it.
+    let overhangs = !whole.contains_rect(region::covering(bounds));
 
     // Rule 2's other half: the pass's clip is the deepest chain every item of it applies.
     let pass_clip = items
@@ -278,6 +280,7 @@ fn record(
         instanced: pairwise_disjoint(&covered),
         composite_order,
         clamped,
+        overhangs,
     });
 }
 

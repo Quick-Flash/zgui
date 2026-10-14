@@ -50,8 +50,9 @@ pub fn pass(
         f64::from(pass.raster_region.origin.x - pass.region.origin.x),
         f64::from(pass.raster_region.origin.y - pass.region.origin.y),
     ));
-    // A cut pass holds items that reach past its region, and the layer goes on past the region
-    // into the pass packed beside it. One clip keeps every item of the pass inside its own region.
+    // A cut pass, or one at the edge of the surface, holds items that reach past its region, and
+    // the layer goes on past the region into the pass packed beside it. One clip keeps every item
+    // of the pass inside its own region.
     if pass.clamped {
         let region = pass.raster_region;
         scene.push_clip_layer(

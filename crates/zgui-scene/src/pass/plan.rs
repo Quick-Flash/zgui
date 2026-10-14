@@ -58,6 +58,12 @@ pub struct PlannedPass {
     /// renderer that redraws more than the damage draws the passes of
     /// [`Scene::plan_uncut_passes`](crate::scene::Scene::plan_uncut_passes).
     pub clamped: bool,
+    /// Whether the ink of its items goes past the edge of the surface, where the region stops.
+    ///
+    /// A rasteriser keeps the items of such a pass inside the region, for the same reason as for a
+    /// cut pass. A redraw of more than the damage does not change it, so it does not make the pass
+    /// cut.
+    pub overhangs: bool,
 }
 
 /// Everything a frame's vector work amounts to.

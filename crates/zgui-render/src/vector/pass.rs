@@ -43,9 +43,10 @@ pub struct VectorPass {
     /// sets it exactly when no two of the pass's items overlap each other, so no part of the
     /// scratch is composited twice.
     pub instanced: bool,
-    /// Whether the region was cut to the frame's damage, so the items reach past it.
+    /// Whether the items reach past the region, because the region was cut to the frame's damage
+    /// or stops at the edge of the surface.
     ///
-    /// Copied from the display list's plan. An implementation keeps the pass's items inside
+    /// Set from the display list's plan. An implementation keeps the pass's items inside
     /// [`VectorPass::raster_region`], because the pass beside it in the same scratch begins where
     /// the region ends.
     pub clamped: bool,

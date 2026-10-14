@@ -216,8 +216,8 @@ impl CoverageRaster {
             let clip_count = self.runs.len() - clip_first;
 
             // The ink is recorded relative to its pass's region, and the bin is where that region
-            // is in the layer. A pixel of slack on each side, except past the edge of a cut pass:
-            // the pass beside it in the layer starts there.
+            // is in the layer. A pixel of slack on each side, except past the edge of a clamped
+            // pass: the pass beside it in the layer starts there.
             let mut bounds = [
                 (origin.x + planned.ink.origin.x) as f32 - 1.0,
                 (origin.y + planned.ink.origin.y) as f32 - 1.0,
@@ -422,7 +422,7 @@ impl VectorRaster for CoverageRaster {
                 items: planned.items.clone(),
                 clip: planned.clip,
                 instanced: planned.instanced,
-                clamped: planned.clamped,
+                clamped: planned.clamped || planned.overhangs,
             });
         }
         let (width, height) = layering.extent();

@@ -314,7 +314,7 @@ impl VectorRaster for VelloRaster {
                 items: planned.items.clone(),
                 clip: planned.clip,
                 instanced: planned.instanced,
-                clamped: planned.clamped,
+                clamped: planned.clamped || planned.overhangs,
             });
         }
         let (width, height) = layering.extent();
