@@ -16,7 +16,7 @@ use crate::error::Result;
 use crate::{lint, process};
 
 /// The workspace members that own a `wall_clock` test target.
-pub(crate) const WALL_CLOCK_MEMBERS: &[&str] = &["zgui-layout", "zgui"];
+pub(crate) const WALL_CLOCK_MEMBERS: &[&str] = &["zgui-layout", "zgui", "zgui-platform-wayland"];
 
 /// The test target every wall-clock budget lives in.
 const TARGET: &str = "wall_clock";

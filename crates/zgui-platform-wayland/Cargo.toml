@@ -82,10 +82,18 @@ name = "wake_signal"
 path = "tests/wake_signal.rs"
 harness = false
 
+# A declined redraw must not wait out the watchdog's grace, which only a wall-clock bound can see.
+# Behind its feature so that an unoptimised run cannot read an unoptimised time as a regression; the
+# gate runs it in release.
 [[test]]
-name = "declined_redraw"
-path = "tests/declined_redraw.rs"
+name = "wall_clock"
+path = "tests/wall_clock.rs"
 harness = false
+required-features = ["wall-clock"]
+
+[features]
+# Compiles the wall-clock target. Off by default; the gate switches it on and runs it in release.
+wall-clock = []
 
 [lints]
 workspace = true
