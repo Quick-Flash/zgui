@@ -37,7 +37,7 @@ pub(crate) const SUBJECTS: &[Subject] = &[
         required: &[
             "every_registered_cache_is_empty_after_forget",
             "the_report_names_every_registered_cache_exactly_once",
-            "a_cache_comes_back_under_a_level_it_is_over_and_is_untouched_under_one_it_is_not",
+            "a_budget_drops_rebuildable_content_but_pins_active_shaping",
         ],
         listed_in: HERE,
     },
