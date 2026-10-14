@@ -95,7 +95,7 @@ fn one(store: &mut LayoutStore, document: &Document, target: NodeIndex) -> Optio
     let old = place::primary_box(store, document, target)?;
     let held = confine::confined(store, document, target, old)?;
     let removed = u32::try_from(held.subtree.len()).unwrap_or(u32::MAX);
-    let containing_block = place::containing_block(store, held.parent);
+    let containing_block = place::containing_block(store, held.parent)?;
     let parent_style = document
         .store()
         .core(target)
@@ -182,13 +182,13 @@ fn takes_the_same_part(
     old: BoxKey,
     built: &Subtree,
     held: &confine::Held,
-    containing_block: Option<BoxKey>,
+    containing_block: BoxKey,
 ) -> bool {
     if built.root.participation == Participation::Contents {
         return false;
     }
     let hangs_right = if built.root.out_of_flow {
-        containing_block == Some(held.parent)
+        containing_block == held.parent
     } else {
         written_under(store, document, target, held.parent)
     };

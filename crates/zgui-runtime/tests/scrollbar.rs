@@ -288,33 +288,21 @@ fn a_fixed_scrim_and_the_gutter_together_cover_the_whole_window() {
     harness.settle(8);
 
     let track = bar(&harness, ScrollbarPart::Track);
-    let scrim = {
-        let window = window(&harness);
-        let layout = window.layout().borrow();
-        let mut widest: Option<[f32; 4]> = None;
-        for key in layout.keys() {
-            let Some(node) = layout.get(key) else {
-                continue;
-            };
-            if node.style.get_box().position != zgui_css::values::size::PositionValue::Fixed {
-                continue;
-            }
-            let Some(frag) = layout.fragments_of_box(key).first().copied() else {
-                continue;
-            };
-            let Some(fragment) = layout.fragment(frag) else {
-                continue;
-            };
-            let box_ = fragment.border_box;
-            widest = Some([
-                box_.origin.x.0,
-                box_.origin.y.0,
-                box_.size.width.0,
-                box_.size.height.0,
-            ]);
-        }
-        widest.expect("the fixed scrim was laid out")
-    };
+    // Found by its fill in the display list. The overlay root is also a fixed box, and it paints
+    // nothing.
+    let scene = window(&harness).scene();
+    let scrim = scene
+        .primitives
+        .quads
+        .iter()
+        .find(|quad| {
+            let fill = quad.fill.id().and_then(|id| scene.paints.get(id));
+            matches!(fill, Some(zgui_scene::Paint::Solid(color))
+                if color.components()[0] < 0.01
+                    && (color.components()[2] - 128.0 / 255.0).abs() < 0.01)
+        })
+        .map(|quad| quad.bounds)
+        .expect("the fixed scrim was painted");
 
     assert_eq!(
         scrim,
@@ -327,7 +315,10 @@ fn a_fixed_scrim_and_the_gutter_together_cover_the_whole_window() {
         "and the track begins exactly where it ends, with no strip between them"
     );
     assert_eq!(track[0] + track[2], 400.0, "reaching the window's edge");
-    assert!(painted(&harness, track));
+    assert!(
+        painted_within(&harness, track),
+        "the thumb is drawn in the strip beside the scrim"
+    );
 }
 
 #[test]

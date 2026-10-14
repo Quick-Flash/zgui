@@ -143,8 +143,8 @@ pub struct Subtree {
 /// Builds the boxes one element generates, without touching any other box.
 ///
 /// `containing_block` is the box that positions an out-of-flow descendant — the nearest ancestor
-/// box that establishes a containing block, which is outside the subtree and therefore has to be
-/// supplied — and `parent_style` is the style an anonymous box directly inside `index` inherits
+/// box that establishes a containing block, or the root's box when none does, which is outside the
+/// subtree and therefore has to be supplied — and `parent_style` is the style an anonymous box directly inside `index` inherits
 /// from.
 ///
 /// Returns nothing when the element generates no box at all, which `display: none` and
@@ -157,7 +157,7 @@ pub fn build_subtree(
     store: &mut LayoutStore,
     document: &Document,
     index: NodeIndex,
-    containing_block: Option<BoxKey>,
+    containing_block: BoxKey,
     parent_style: Option<&ComputedStyle>,
 ) -> Option<Subtree> {
     let mut builder = Builder {
@@ -165,7 +165,7 @@ pub fn build_subtree(
         document,
         reparented: Vec::new(),
     };
-    let root = builder.element(index, containing_block, parent_style)?;
+    let root = builder.element(index, Some(containing_block), parent_style)?;
     let reparented = core::mem::take(&mut builder.reparented);
     Some(Subtree { root, reparented })
 }
@@ -256,7 +256,12 @@ impl Builder<'_> {
         let key = self.store.insert_with_content(node, content);
         counter::bump(Counter::BoxesRebuilt);
 
-        let inner_cb = if establishes_containing_block(classification.positioned, fc) {
+        // A box that arrives with no containing block is the root of the tree, and the root's box
+        // is the initial containing block: an out-of-flow box with no positioned ancestor is laid
+        // out against it rather than against the box it was written inside.
+        let inner_cb = if containing_block.is_none()
+            || establishes_containing_block(classification.positioned, fc)
+        {
             Some(key)
         } else {
             containing_block

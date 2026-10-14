@@ -31,7 +31,7 @@ pub(super) struct Plan {
     /// What the container lays its children out by.
     pub(super) fc: FormattingContext,
     /// The box that positions an out-of-flow box written inside the container.
-    pub(super) containing_block: Option<BoxKey>,
+    pub(super) containing_block: BoxKey,
     /// The style an anonymous box directly inside the container inherits from.
     pub(super) style: ComputedStyle,
     /// Every position of the new child list, in document order.
@@ -168,7 +168,7 @@ pub(super) fn of(
     Some(Plan {
         container: own,
         fc,
-        containing_block: place::containing_block(store, own),
+        containing_block: place::containing_block(store, own)?,
         style: document.node(container).primary_style()?,
         steps,
         departing,

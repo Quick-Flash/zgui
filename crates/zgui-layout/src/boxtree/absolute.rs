@@ -4,8 +4,10 @@
 //! CSS resolves it against the nearest positioned ancestor. Those are the same box only by
 //! accident. So an out-of-flow box is re-parented while the tree is built: it is kept out of the
 //! layout child list of the box it was written inside, and appended to the layout child list of the
-//! box that positions it. Its entry in the *paint* child list stays where it was written, because
-//! painting order and accessible geometry follow the document.
+//! box that positions it. When no ancestor is positioned, that box is the root's, which is the
+//! initial containing block. Painting walks the layout child list, which is where CSS paints a
+//! positioned box. Its entry in the *paint* child list stays where it was written, because
+//! accessible geometry follows the document.
 
 use zgui_dom::side::BoxKey;
 

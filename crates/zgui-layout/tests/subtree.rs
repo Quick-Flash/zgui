@@ -259,6 +259,58 @@ fn a_box_positioned_from_outside_the_subtree_refuses_the_splice() {
 }
 
 #[test]
+fn a_box_positioned_by_the_root_refuses_the_splice_of_the_panel_it_was_written_in() {
+    let _recording = Recording::begin();
+    // Nothing is positioned, so `first` is laid out by the root's box, which is the initial
+    // containing block. The splice of `left` is refused for the same reason as above.
+    let fixture = two_panels(
+        "root { display: block; width: 400px }
+         left, right, second { display: block }
+         first { display: block; position: absolute; top: 0; left: 0 }",
+    );
+    let mut store = fixture.box_tree();
+    let before = shape(&to_text(&store));
+
+    assert!(
+        patch::rebuild(
+            &mut store,
+            &fixture.document,
+            &owes_boxes(element(&fixture, "left"))
+        )
+        .is_none(),
+        "a subtree holding a box the root lays out was spliced anyway"
+    );
+    assert_eq!(
+        shape(&to_text(&store)),
+        before,
+        "a refused splice left the tree changed"
+    );
+}
+
+#[test]
+fn a_splice_in_the_panel_beside_a_box_positioned_by_the_root_leaves_the_tree_a_build_produces() {
+    let _recording = Recording::begin();
+    let fixture = two_panels(
+        "root { display: block; width: 400px }
+         left, right, second { display: block }
+         first { display: block; position: absolute; top: 0; left: 0 }",
+    );
+    let mut store = fixture.box_tree();
+
+    patch::rebuild(
+        &mut store,
+        &fixture.document,
+        &owes_boxes(element(&fixture, "second")),
+    )
+    .expect("the block in the other panel holds nothing out of flow");
+    assert_eq!(
+        shape(&to_text(&store)),
+        shape(&to_text(&fixture.box_tree())),
+        "the spliced tree differs from a build of the same document"
+    );
+}
+
+#[test]
 fn a_container_that_stops_generating_a_box_refuses_rather_than_leaving_a_hole() {
     let _recording = Recording::begin();
     // `left` is what would be replaced, and the change makes it generate nothing. The splice may
