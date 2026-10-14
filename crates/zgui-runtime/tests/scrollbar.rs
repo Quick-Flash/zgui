@@ -122,6 +122,25 @@ fn painted(
     })
 }
 
+/// Whether the scene holds a quad that lies wholly inside `rect` and covers part of it.
+///
+/// The thumb is painted slimmer than the rectangle layout reserved for it, so this is how a test
+/// that is not about its thickness finds it.
+fn painted_within(
+    harness: &zgui_platform_headless::Harness<zgui_runtime::Runtime>,
+    rect: [f32; 4],
+) -> bool {
+    window(harness).scene().primitives.quads.iter().any(|quad| {
+        let [x, y, width, height] = quad.bounds;
+        width > 0.0
+            && height > 0.0
+            && x >= rect[0] - 0.01
+            && y >= rect[1] - 0.01
+            && x + width <= rect[0] + rect[2] + 0.01
+            && y + height <= rect[1] + rect[3] + 0.01
+    })
+}
+
 /// Where the page is scrolled to, in device pixels down.
 fn offset(harness: &zgui_platform_headless::Harness<zgui_runtime::Runtime>) -> f32 {
     let window = window(harness);
@@ -214,7 +233,7 @@ fn pointer(
 }
 
 #[test]
-fn a_scrolling_page_draws_a_track_and_a_thumb_into_the_gutter_it_reserved() {
+fn a_scrolling_page_places_a_track_and_draws_a_thumb_in_the_gutter_it_reserved() {
     let mut harness = page(CSS, false);
     harness.settle(8);
 
@@ -230,11 +249,15 @@ fn a_scrolling_page_draws_a_track_and_a_thumb_into_the_gutter_it_reserved() {
     let thumb = bar(&harness, ScrollbarPart::Thumb);
     assert_eq!(thumb, [400.0 - GUTTER, 0.0, GUTTER, 150.0]);
 
+    // The default paint draws no groove and a slim capsule centred in the thumb's rectangle.
     assert!(
-        painted(&harness, track),
-        "the track reached the display list"
+        !painted(&harness, track),
+        "the default track is transparent and pushes nothing"
     );
-    assert!(painted(&harness, thumb), "and so did the thumb");
+    assert!(
+        painted(&harness, [400.0 - GUTTER / 2.0 - 3.0, 0.0, 6.0, 150.0]),
+        "the thumb reached the display list, six pixels wide down the middle of the gutter"
+    );
 }
 
 #[test]
@@ -250,9 +273,8 @@ fn a_reserved_gutter_with_nothing_to_scroll_has_a_track_and_no_thumb() {
     );
     assert_eq!(found[0].1, ScrollbarPart::Track);
     assert!(
-        painted(&harness, found[0].2),
-        "the strip is filled even though nothing can move, because it is space the content will \
-         never cover"
+        !painted(&harness, found[0].2),
+        "the default track is transparent and pushes nothing, whether or not anything can move"
     );
 }
 
@@ -464,7 +486,10 @@ fn the_bar_follows_a_resize() {
         [500.0 - GUTTER, 0.0, GUTTER, 400.0],
         "the track moved with the window's right edge and grew with its height"
     );
-    assert!(painted(&harness, track));
+    assert!(
+        painted_within(&harness, track),
+        "the thumb is drawn in the moved track"
+    );
 }
 
 #[test]
@@ -494,5 +519,8 @@ fn at_a_fractional_scale_the_track_begins_exactly_where_the_content_ends() {
         "the track begins on the content box's own right edge"
     );
     assert_eq!(track[0] + track[2], 501.0, "and reaches the surface's edge");
-    assert!(painted(&harness, track));
+    assert!(
+        painted_within(&harness, track),
+        "the thumb is drawn in the track"
+    );
 }

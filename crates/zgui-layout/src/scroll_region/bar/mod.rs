@@ -1,12 +1,11 @@
 //! The bars a scrollport shows in the gutter it reserved.
 //!
 //! A scroll container that reserved a gutter has a strip of its padding box that its content was
-//! moved out of. Two things go there. A *track* fills the whole strip and is drawn whenever the
-//! gutter exists at all, because the strip is space the content will never cover and an unpainted
-//! one is a hole in the window — and nothing laid out as a fraction of the viewport can fill it
-//! either, the viewport being the window less exactly these gutters. A *thumb* is drawn over it only
-//! when the content really can move, is as long as the fraction of the content that is visible, and
-//! sits where the scroll offset puts it.
+//! moved out of. Two things go there. A *track* fills the whole strip whenever the gutter exists at
+//! all, and it is what catches a press that pages the content. Its paint is the theme's to decide;
+//! the default paint draws nothing there. A *thumb* sits on the track only when the content really
+//! can move, is as long as the fraction of the content that is visible, and sits where the scroll
+//! offset puts it.
 //!
 //! Every rectangle here is derived from two numbers layout has already produced: the box's inner
 //! rectangle — its padding box less its padding — and its content box, which differ by exactly the
