@@ -74,6 +74,8 @@ struct Drawn {
     /// nothing else. The position is what says whether the layout that placed it was recomputed,
     /// which no damage rectangle and no tile can show.
     sprites: Vec<Sprite>,
+    /// Every glyph sprite's box, in whole device pixels: the pixels the glyph can put ink on.
+    glyph_ink: Vec<Rect<i32, Device>>,
 }
 
 /// One glyph in a frame's display list.
@@ -133,6 +135,22 @@ impl Renderer for Recorder {
                 .map(|sprite| Sprite {
                     tile: (sprite.tile.texture, sprite.tile.tile),
                     x: sprite.bounds[0].floor() as i32,
+                })
+                .collect(),
+            glyph_ink: scene
+                .primitives
+                .mono_sprites
+                .iter()
+                .map(|sprite| {
+                    let [x, y, width, height] = sprite.bounds;
+                    let (left, top) = (x.floor(), y.floor());
+                    Rect::new(
+                        Point::new(left as i32, top as i32),
+                        Size::new(
+                            ((x + width).ceil() - left) as i32,
+                            ((y + height).ceil() - top) as i32,
+                        ),
+                    )
                 })
                 .collect(),
         });
@@ -268,6 +286,19 @@ fn fragment_names(window: &zgui_runtime::Window) -> Vec<zgui_layout::FragKey> {
         .collect();
     keys.sort_by_key(|key| (key.index(), key.generation()));
     keys
+}
+
+/// The union of the glyph boxes `frames` drew inside `line`, or `None` when they drew none there.
+///
+/// This is what a change of text has to repaint: the glyphs it removed and the glyphs it added. The
+/// line box around them paints nothing of its own, so a damage that leaves its empty part alone is
+/// correct.
+fn glyph_ink_in(frames: &[Drawn], line: Rect<i32, Device>) -> Option<Rect<i32, Device>> {
+    frames
+        .iter()
+        .flat_map(|frame| frame.glyph_ink.iter().copied())
+        .filter(|glyph| glyph.intersects(line))
+        .reduce(|held, glyph| held.union(glyph))
 }
 
 /// The union of the rectangles a burst of frames was drawn against, and the area they covered.
@@ -465,6 +496,8 @@ fn a_counter_incrementing_damages_the_text_and_not_the_window() {
     let fragments = fragment_names(&app.app().windows()[0]);
     assert!(!boxes.is_empty() && !fragments.is_empty());
 
+    let line = box_of_width(&app.app().windows()[0], 40.0);
+    let before = glyph_ink_in(&log.borrow(), line);
     log.borrow_mut().clear();
     count.set(7);
     app.settle(8);
@@ -473,17 +506,22 @@ fn a_counter_incrementing_damages_the_text_and_not_the_window() {
     assert!(!frames.is_empty(), "the click produced no frame at all");
     let (bounds, area) = covered(&frames);
 
-    let text = box_of_width(&app.app().windows()[0], 40.0);
+    let after = glyph_ink_in(&frames, line);
+    let text = before
+        .into_iter()
+        .chain(after)
+        .reduce(|held, glyph| held.union(glyph))
+        .expect("the counter drew no glyph at all");
     let bounds = bounds.expect("the frames that followed the click damaged nothing at all");
     assert!(
         contains(bounds, text),
-        "the text at {text:?} was not inside the damage {bounds:?}, so the frame drew less than \
-         it had to"
+        "the old and new digits at {text:?} were not inside the damage {bounds:?}, so the frame \
+         drew less than it had to"
     );
     let text_area = i64::from(text.size.width) * i64::from(text.size.height);
     assert!(
         area >= text_area,
-        "the burst damaged {area} px, which is less than the {text_area} px the text occupies"
+        "the burst damaged {area} px, which is less than the {text_area} px the digits occupy"
     );
     assert!(
         area <= SURFACE_AREA / 20,
@@ -529,6 +567,7 @@ fn typing_one_character_does_not_rebuild_the_box_tree_above_it() {
         .expect("mounting drew a frame");
     assert_eq!(glyphs_before, 2, "two characters did not draw two glyphs");
 
+    let line = box_of_width(&app.app().windows()[0], 40.0);
     log.borrow_mut().clear();
     typed.set(String::from("abc"));
     app.settle(8);
@@ -539,17 +578,17 @@ fn typing_one_character_does_not_rebuild_the_box_tree_above_it() {
     // The lower bound before the upper one, and it is containment rather than "more than nothing":
     // a burst that damaged one pixel somewhere satisfies both `area > 0` and every ceiling below,
     // while the characters that changed stay on the screen as they were.
-    let text = box_of_width(&app.app().windows()[0], 40.0);
+    let text = glyph_ink_in(&frames, line).expect("the keystroke drew no glyph at all");
     let bounds = bounds.expect("the frames that followed the keystroke damaged nothing at all");
     assert!(
         contains(bounds, text),
-        "the text at {text:?} was not inside the damage {bounds:?}, so the frame drew less than \
-         it had to"
+        "the typed glyphs at {text:?} were not inside the damage {bounds:?}, so the frame drew \
+         less than it had to"
     );
     let text_area = i64::from(text.size.width) * i64::from(text.size.height);
     assert!(
         area >= text_area,
-        "the burst damaged {area} px, which is less than the {text_area} px the text occupies"
+        "the burst damaged {area} px, which is less than the {text_area} px the glyphs occupy"
     );
     assert!(
         area <= SURFACE_AREA / 20,
