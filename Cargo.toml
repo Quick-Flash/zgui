@@ -9,6 +9,14 @@ edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/zortax/zgui"
 homepage = "https://zgui.zortax.de"
+# What every published crate shares. The console crates are not published and do not inherit these:
+# `zgui-xkb` needs nightly, so they keep no minimum stable version either.
+rust-version = "1.90"
+keywords = ["gui", "ui", "css", "reactive", "wgpu"]
+categories = ["gui"]
+# A package carries what a dependent builds and the licence text, and none of the tests, fixtures
+# or test fonts.
+include = ["/src", "/build", "/build.rs", "/README.md", "/LICENSE", "/NOTICE"]
 
 # Every dependency of every crate is declared here and inherited with `foo.workspace = true`,
 # so a version, a feature set or a `default-features` decision exists in exactly one place.

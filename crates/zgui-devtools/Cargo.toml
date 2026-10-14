@@ -6,6 +6,10 @@ license.workspace = true
 description = "Inspector for zgui windows: document, styles, layout and frame stats"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L8 — the inspector. Every dependency is a path to a crate below it.
 #

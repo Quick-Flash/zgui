@@ -6,6 +6,10 @@ license.workspace = true
 description = "Box layout for zgui documents: flexbox, grid, block and inline"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L4 — engines. Every dependency is inherited: `foo.workspace = true`.
 [dependencies]

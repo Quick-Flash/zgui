@@ -6,6 +6,10 @@ license.workspace = true
 description = "Platform contract that windowing backends implement"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L1 — contracts. Every dependency is inherited: `foo.workspace = true`.
 #

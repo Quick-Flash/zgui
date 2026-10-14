@@ -6,6 +6,10 @@ license.workspace = true
 description = "Paint stage: computed style and fragments into scene primitives"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L4 — engines. Every dependency is inherited: `foo.workspace = true`.
 [dependencies]
@@ -60,6 +64,8 @@ workspace = true
 # paint stage tested against hand-written fragments is a paint stage tested against a guess.
 [dev-dependencies.zgui-text-style]
 path = "../zgui-text-style"
+version = "0.1.0"
 
 [dev-dependencies.zgui-interned]
 path = "../zgui-interned"
+version = "0.1.0"

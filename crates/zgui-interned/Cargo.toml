@@ -6,6 +6,10 @@ license.workspace = true
 description = "Interned strings for names that zgui compares often"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L0 — foundation. Every dependency is inherited: `foo.workspace = true`.
 [dependencies]

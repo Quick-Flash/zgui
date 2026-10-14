@@ -6,6 +6,10 @@ license.workspace = true
 description = "Native Wayland platform backend for zgui"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L2 — backends. Every dependency is inherited: `foo.workspace = true`.
 #

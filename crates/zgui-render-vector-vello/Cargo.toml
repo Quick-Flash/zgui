@@ -6,6 +6,10 @@ license.workspace = true
 description = "Vector rasterizer built on Vello"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L2 — backends. Every dependency is inherited: `foo.workspace = true`.
 [dependencies]

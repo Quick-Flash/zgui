@@ -6,6 +6,10 @@ license.workspace = true
 description = "Headless zgui platform with a test clock and scripted input"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L2 — backends. Every dependency is inherited: `foo.workspace = true`.
 #

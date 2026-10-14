@@ -80,7 +80,7 @@ fn main() -> Result<(), zgui::Error> {
 `Counter` runs once. The closure around `count.get()` is a **reactive hole**: it subscribes to
 `count` and updates one text node when the value changes.
 
-A slightly larger counter is in [`examples/counter.rs`](examples/counter.rs):
+A slightly larger counter is in [`examples/counter.rs`](https://github.com/zortax/zgui/blob/main/examples/counter.rs):
 
 ```console
 cargo run -p zgui-examples --example counter
@@ -438,7 +438,7 @@ cargo run -p zgui-examples --example vector
 cargo run -p zgui-examples --example surface
 ```
 
-The [`examples/`](examples) directory also covers async work, multiple windows, images, canvas
+The [`examples/`](https://github.com/zortax/zgui/tree/main/examples) directory also covers async work, multiple windows, images, canvas
 drawing, custom elements, custom shaders and custom window chrome. The
 [installation guide](https://zgui.zortax.de/docs/getting-started/installation) walks through a
 first application.
@@ -446,8 +446,8 @@ first application.
 ## Community
 
 Ask questions and share what you build on [Discord](https://discord.gg/E6SDmyRRmd). Read
-[CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request.
+[CONTRIBUTING.md](https://github.com/zortax/zgui/blob/main/CONTRIBUTING.md) before you open a pull request.
 
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](https://github.com/zortax/zgui/blob/main/LICENSE)

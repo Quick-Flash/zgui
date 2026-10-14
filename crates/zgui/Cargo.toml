@@ -6,6 +6,10 @@ license.workspace = true
 description = "Native Rust UI framework with fine-grained signals, CSS and a retained GPU renderer"
 repository.workspace = true
 homepage.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
 
 # L7 — runtime and tooling. Every dependency is inherited: `foo.workspace = true`.
 #
@@ -94,3 +98,7 @@ workspace = true
 # start-up by whether a Wayland display exists.
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 zgui-platform-wayland = { path = "../zgui-platform-wayland", version = "0.1.0" }
+
+# The `tokio` feature adds public API.
+[package.metadata.docs.rs]
+features = ["tokio"]
