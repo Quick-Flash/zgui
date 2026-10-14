@@ -6,6 +6,8 @@ use crate::new_crate::Layer;
 pub(crate) const USAGE: &str = "\
 usage:
   cargo xtask ci                      run the full definition of done
+  cargo xtask ci --hosted             the same, without `perf` and `tails`, which compare
+                                      against numbers taken on the reference machine
   cargo xtask lint                    run clippy over every target in both profiles,
                                       which is also a step of `ci`
   cargo xtask wall-clock              run the wall-clock budget targets in release,
@@ -66,7 +68,10 @@ usage:
 #[derive(Debug, PartialEq)]
 pub(crate) enum Command {
     /// Run every gate in the definition of done.
-    Ci,
+    Ci {
+        /// Whether to skip the gates that compare against the reference machine's own timings.
+        hosted: bool,
+    },
     /// Run clippy over every target of every member, in both profiles.
     Lint,
     /// Run the wall-clock budget targets in an optimised build.
@@ -132,7 +137,11 @@ impl Command {
         let mut args = args.iter().map(String::as_str);
         match args.next() {
             None | Some("help" | "-h" | "--help") => Ok(Self::Help),
-            Some("ci") => Ok(Self::Ci),
+            Some("ci") => match args.next() {
+                None => Ok(Self::Ci { hosted: false }),
+                Some("--hosted") => Ok(Self::Ci { hosted: true }),
+                Some(other) => Err(format!("unknown ci option `{other}`")),
+            },
             Some("lint") => Ok(Self::Lint),
             Some("wall-clock") => Ok(Self::WallClock),
             Some("perf") => match args.next() {
@@ -208,7 +217,8 @@ mod tests {
 
     #[test]
     fn parses_every_command_form() {
-        assert_eq!(parse("ci"), Ok(Command::Ci));
+        assert_eq!(parse("ci"), Ok(Command::Ci { hosted: false }));
+        assert_eq!(parse("ci --hosted"), Ok(Command::Ci { hosted: true }));
         assert_eq!(parse("lint"), Ok(Command::Lint));
         assert_eq!(parse("wall-clock"), Ok(Command::WallClock));
         assert_eq!(parse("perf"), Ok(Command::Perf));

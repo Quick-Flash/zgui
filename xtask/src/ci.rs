@@ -13,7 +13,11 @@ use crate::{
 };
 
 /// Runs every gate, stopping at the first failure.
-pub(crate) fn run(root: &Path) -> Result<()> {
+///
+/// `hosted` skips `perf` and `tails`. Their bands are absolute times taken on the reference
+/// machine, so a shared build machine fails them for reasons unrelated to the commit, and `perf`
+/// writes its numbers into `docs/performance.md`. Every other gate runs.
+pub(crate) fn run(root: &Path, hosted: bool) -> Result<()> {
     let cargo = process::cargo();
 
     step("cargo fmt --check");
@@ -87,15 +91,19 @@ pub(crate) fn run(root: &Path) -> Result<()> {
     // After the budgets and before the documentation gate, because this *writes* documentation:
     // `docs/performance.md` is regenerated from the run it just took, so a build whose numbers
     // moved leaves the change in the working tree where a reader will see it.
-    step("performance ratchet");
-    perf::run(root)?;
+    if hosted {
+        step("performance ratchet and tails: skipped on a hosted machine");
+    } else {
+        step("performance ratchet");
+        perf::run(root)?;
 
-    // Immediately after the ratchet, and reading what it just stored rather than taking its own
-    // measurement: the claim being checked is about the numbers a reader will see in
-    // `docs/performance.md`, and a second opinion taken from a second run would be about a
-    // different one.
-    step("tails");
-    tails::run(root)?;
+        // Immediately after the ratchet, and reading what it just stored rather than taking its
+        // own measurement: the claim being checked is about the numbers a reader will see in
+        // `docs/performance.md`, and a second opinion taken from a second run would be about a
+        // different one.
+        step("tails");
+        tails::run(root)?;
+    }
 
     // A count band of zero over everything a run keeps, which is the one gate in this list that
     // can see a defect no timing can: a table that grows makes no frame slower until thousands of

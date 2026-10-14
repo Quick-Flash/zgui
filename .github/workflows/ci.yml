@@ -31,8 +31,14 @@ jobs:
           start=$(date +%s)
           cargo build --workspace
           echo "clean debug build: $(( $(date +%s) - start ))s" | tee -a "$GITHUB_STEP_SUMMARY"
+      # The `release` gate checks the public surface against the last tag with this tool.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+      # `--hosted` leaves out the performance ratchet: its bands are times taken on the reference
+      # machine, which a shared runner does not reproduce.
       - name: cargo xtask ci
-        run: cargo xtask ci
+        run: cargo xtask ci --hosted
 
   release:
     name: release — build and test
