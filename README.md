@@ -22,8 +22,7 @@ after that (style, layout, paint and the final pixels) keeps the work it can reu
 native and drawn with wgpu. There is no webview, HTML or JavaScript.
 
 > [!WARNING]
-> zgui is experimental and changes often. It needs the pinned nightly toolchain and is not on
-> crates.io yet.
+> zgui is experimental and changes often. Expect breaking changes between 0.x releases.
 
 ## Features
 
@@ -419,17 +418,30 @@ incrementality.
 
 ## Getting started
 
-zgui is used from Git for now:
+Add zgui, and the component library if you want it, from crates.io:
 
 ```toml
 [dependencies]
-zgui = { git = "https://github.com/zortax/zgui" }
-zgui-ui = { git = "https://github.com/zortax/zgui" }
-zgui-ui-tokens = { git = "https://github.com/zortax/zgui" }
+zgui = "0.1"
+zgui-ui = "0.1"
+zgui-ui-tokens = "0.1"
 ```
 
-Pin a commit for reproducible builds, and use the toolchain from this repository's
-`rust-toolchain.toml`. Some examples to try:
+zgui builds on stable Rust 1.90 or later. On Linux, install `pkg-config`, `libxkbcommon`,
+`libwayland`, the X11 libraries (`libx11`, `libxcb`, `libxcursor`, `libxi`, `libxrandr`) and
+`fontconfig`.
+
+The zgui repository patches fontique, the font collection under the text engine, so that it keeps
+resolved font families from one paragraph to the next. A crates.io build uses the released
+fontique, which shows the same text and resolves fonts more slowly. To use the patched copy, add
+this to your application's `Cargo.toml`:
+
+```toml
+[patch.crates-io]
+fontique = { git = "https://github.com/zortax/zgui", tag = "v0.1.0" }
+```
+
+To run the examples, clone the repository. Some examples to try:
 
 ```console
 cargo run -p zgui-ui --example gallery
@@ -438,9 +450,9 @@ cargo run -p zgui-examples --example vector
 cargo run -p zgui-examples --example surface
 ```
 
-The [`examples/`](https://github.com/zortax/zgui/tree/main/examples) directory also covers async work, multiple windows, images, canvas
-drawing, custom elements, custom shaders and custom window chrome. The
-[installation guide](https://zgui.zortax.de/docs/getting-started/installation) walks through a
+The [`examples/`](https://github.com/zortax/zgui/tree/main/examples) directory also covers async
+work, multiple windows, images, canvas drawing, custom elements, custom shaders and custom window
+chrome. The [installation guide](https://zgui.zortax.de/docs/getting-started/installation) walks through a
 first application.
 
 ## Community
