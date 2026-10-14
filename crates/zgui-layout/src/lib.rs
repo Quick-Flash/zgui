@@ -15,11 +15,11 @@
 //! there is one box identity in the workspace and not two. The record for a box lives here; the
 //! name is declared where the document can reach it.
 //!
-//! # No layout-engine style is ever built
+//! # One engine style per box
 //!
-//! The layout algorithms read styles through traits, and what implements those traits is
-//! [`StyleRef`] — a small borrow of one box's computed style. Lowering a computed
-//! style into a second style struct, per box, per frame, would cost more than the layout it feeds.
+//! The layout algorithms read one engine style per box, which the store interns once from the
+//! box's lowered style and its variant (see [`style`]). Building a second style struct per box, per
+//! frame, would cost more than the layout it feeds.
 //!
 //! # What lives where
 //!

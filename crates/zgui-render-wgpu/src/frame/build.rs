@@ -187,7 +187,7 @@ impl<'gpu> PlanBuilder<'gpu> {
     /// Whether a lent target still holds whatever the lease before it left there.
     ///
     /// True until the first pass that writes into it, because that pass is the one that discards
-    /// it — see [`PlanBuilder::acquire_in`]. Anything about to *read* a lent target has to ask: a
+    /// it — see `PlanBuilder::acquire_in`. Anything about to *read* a lent target has to ask: a
     /// lease nothing wrote into was never cleared, so reading it reads a stranger's pixels.
     pub fn is_unwritten(&self, slot: GroupSlot) -> bool {
         self.unwritten.contains(&slot)

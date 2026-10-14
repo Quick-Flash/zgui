@@ -1,6 +1,6 @@
 //! The computed style, as the layout engine sees it.
 //!
-//! No engine style is built per read. A [`lowered::LayoutStyle`] is one cascade result converted
+//! No engine style is built per read. A `LayoutStyle` is one cascade result converted
 //! once for one device, and the store interns one engine style per box from it and the box's
 //! variant; the engine borrows that style by reference for as long as it needs it.
 

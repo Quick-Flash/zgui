@@ -93,7 +93,7 @@ pub trait TextEngine: MeasureContent + ShapedGlyphs + ShapedClusters {
     }
 
     /// A measurer a layout batch worker may own; see
-    /// [`MeasureContent::fork_measurer`](zgui_layout::MeasureContent::fork_measurer).
+    /// [`MeasureContent::fork_measurer`].
     fn fork_worker_measurer(
         &mut self,
         owned: &[ParagraphKey],

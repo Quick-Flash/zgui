@@ -5,7 +5,7 @@
 //!
 //! This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy
 //! of the MPL was not distributed with this file, You can obtain one at
-//! https://mozilla.org/MPL/2.0/.
+//! <https://mozilla.org/MPL/2.0/>.
 //!
 //! `recalc_style_at`, `compute_style` and `note_children` are adapted from that work and have been
 //! modified. The engine's own copy computes the children's hint from the damage it accumulated,

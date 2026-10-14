@@ -214,7 +214,7 @@ impl ScenePainter<'_> {
     ///
     /// `origin` is the line box's top-left corner in painter coordinates. The run's glyph positions
     /// are relative to it, each `y` being the distance down to the baseline, which is what
-    /// [`Shaper::shape_line`](zgui_text_parley::Shaper::shape_line) answers in.
+    /// `Shaper::shape_line` answers in.
     ///
     /// `color` paints the run, and the run's own brush slot is not read: an element that shaped its
     /// own text names its own colour. A colour face keeps its own colours and is drawn at `color`'s

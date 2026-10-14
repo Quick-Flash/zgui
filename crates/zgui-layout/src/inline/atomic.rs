@@ -72,7 +72,7 @@ impl SpaceKey {
 
 /// The pass's tally of shrink-to-fit questions.
 ///
-/// The answers themselves live on each box (see [`AtomicAnswers`]), where the box's own
+/// The answers themselves live on each box (see `AtomicAnswers`), where the box's own
 /// invalidation clears them and an unchanged box keeps them across frames. The tally stays on the
 /// pass because it describes the pass: what a test asserts is that *this* layout asked and was
 /// answered.
