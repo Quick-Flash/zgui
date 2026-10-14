@@ -1,10 +1,23 @@
 # Vendored crates
 
-## fontique 0.11.0 (crates.io, upstream commit 033e0b0)
+## fontique 0.11.1 (crates.io)
 
 The font collection under parley, patched in through `[patch.crates-io]` so that parley resolves
 against the same copy. Without the examples. Every local change is marked `ZGUI-PATCH:` in the
-source.
+source. The source of 0.11.1 is the same as that of 0.11.0 (upstream commit 033e0b0); only its
+manifest differs, and it takes read-fonts 0.41.
+
+### Published crates
+
+`[patch.crates-io]` applies only to a build of this workspace. An application that depends on
+zgui from crates.io builds against the released fontique: it gets the same fonts and resolves them
+more slowly. It can use this copy with the same patch, because cargo finds a package anywhere in a
+git repository:
+
+```toml
+[patch.crates-io]
+fontique = { git = "https://github.com/zortax/zgui", tag = "v0.1.0" }
+```
 
 ### Query state kept across queries (`collection/query.rs`)
 
