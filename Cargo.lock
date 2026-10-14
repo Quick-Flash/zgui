@@ -5634,7 +5634,6 @@ dependencies = [
 name = "zgui"
 version = "0.1.0"
 dependencies = [
- "tracing",
  "zgui-atlas",
  "zgui-bits",
  "zgui-canvas",
@@ -5643,7 +5642,6 @@ dependencies = [
  "zgui-geom",
  "zgui-layout",
  "zgui-platform",
- "zgui-platform-drm",
  "zgui-platform-headless",
  "zgui-platform-wayland",
  "zgui-platform-winit",
@@ -5780,6 +5778,26 @@ dependencies = [
  "zgui-testkit-scene",
  "zgui-text",
  "zgui-text-style",
+]
+
+[[package]]
+name = "zgui-console"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "zgui",
+ "zgui-atlas",
+ "zgui-bits",
+ "zgui-geom",
+ "zgui-platform",
+ "zgui-platform-drm",
+ "zgui-platform-headless",
+ "zgui-render",
+ "zgui-render-vector-vello",
+ "zgui-render-wgpu",
+ "zgui-runtime",
+ "zgui-scene",
+ "zgui-view",
 ]
 
 [[package]]
@@ -5922,6 +5940,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zgui",
+ "zgui-console",
  "zgui-devtools",
 ]
 

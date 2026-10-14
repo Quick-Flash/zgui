@@ -7,7 +7,7 @@
 //! while it drives.
 //!
 //! The loop and the renderer are coupled through that map and through nothing else. Neither half
-//! draws anything without the other, so `App::run_drm` makes one [`Displays`] and gives it to both.
+//! draws anything without the other, so `zgui_console::RunDrm::run_drm` makes one [`Displays`] and gives it to both.
 //!
 //! # The state the two halves share
 //!

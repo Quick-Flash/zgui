@@ -10,6 +10,8 @@ homepage.workspace = true
 # so. The syscall-note exception puts a program that reaches the kernel through those headers
 # outside the reach of the GPL, and an interface such as this one stands on that exception.
 license = "Apache-2.0 AND (GPL-2.0-only WITH Linux-syscall-note)"
+# Experimental: part of the console stack, kept in this repository and not published.
+publish = false
 
 # L2 — backends. Every dependency is inherited: `foo.workspace = true`.
 #

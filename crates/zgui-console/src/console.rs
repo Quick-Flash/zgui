@@ -366,7 +366,7 @@ impl Renderer for DrmRenderer {
 /// `displays` is where a display is found: the frame loop writes each one in under the surface it
 /// is seen as, and it is the same map [`zgui_platform_drm::run`] was given. The graphics is shared
 /// with that loop for the same reason. All three are one decision, and
-/// [`App::run_drm`](crate::App::run_drm) takes it.
+/// [`RunDrm::run_drm`](crate::RunDrm::run_drm) takes it.
 ///
 /// # Errors
 ///

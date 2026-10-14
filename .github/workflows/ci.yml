@@ -38,6 +38,10 @@ jobs:
           start=$(date +%s)
           cargo build --workspace
           echo "clean debug build: $(( $(date +%s) - start ))s" | tee -a "$GITHUB_STEP_SUMMARY"
+      # The console stack is experimental and only the `tty` example reaches it through
+      # `zgui-console`. No other step turns on the feature that builds it.
+      - name: Build the console example
+        run: cargo build -p zgui-examples --features drm --example tty
       # The release gate compares the public API with the last tag.
       - uses: taiki-e/install-action@v2
         with:

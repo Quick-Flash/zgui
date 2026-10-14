@@ -6,6 +6,8 @@ license.workspace = true
 description = "Linux DRM/KMS display access: modes, planes, framebuffers and page flips"
 repository.workspace = true
 homepage.workspace = true
+# Experimental: part of the console stack, kept in this repository and not published.
+publish = false
 
 # L2 — backends. Every dependency is inherited: `foo.workspace = true`.
 #

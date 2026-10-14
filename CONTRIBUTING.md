@@ -51,6 +51,23 @@ cargo xtask tsan                                  # threaded targets under Threa
 - **New crates use the generator.** `cargo xtask new-crate zgui-name --layer L4` writes a manifest
   and a crate root with the workspace lints.
 
+## Experimental crates
+
+The console stack runs an application on a bare Linux console with no display server:
+`zgui-console`, `zgui-platform-drm`, `zgui-drm`, `zgui-evdev`, `zgui-libinput`, `zgui-seat` and
+`zgui-xkb`. These crates are experimental. They stay in this repository and are not published to
+crates.io, and no published crate depends on them.
+
+- `zgui-xkb` needs the pinned nightly toolchain.
+- `zgui-drm` and `zgui-evdev` generate their bindings with bindgen, so a build needs libclang and
+  the kernel and libc headers.
+
+To build the console example:
+
+```console
+cargo build -p zgui-examples --features drm --example tty
+```
+
 ## Adapted code
 
 You can adapt code from projects with a compatible license. Start the file with a header that

@@ -195,7 +195,7 @@ use crate::waker::EventfdWaker;
 
 /// Runs `handler` on the displays this machine's first usable device drives.
 ///
-/// Blocks until the application asks to finish. This is the driver `App::run_drm` hands to the
+/// Blocks until the application asks to finish. This is the driver `zgui_console::RunDrm::run_drm` hands to the
 /// framework, and the two belong together: a frame reaches a display through a renderer that draws
 /// into this loop's scanouts, and through nothing else.
 ///

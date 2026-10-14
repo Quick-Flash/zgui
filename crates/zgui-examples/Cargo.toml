@@ -19,8 +19,13 @@ publish = false
 # application that wants one mounts it as a component and therefore names the crate that defines
 # it, exactly as it would name any other component library. Nothing in `zgui` re-exports it,
 # because an application that does not want a developer tool linked in should not have one.
+#
+# The console entry point is the other exception: it is experimental, and the umbrella crate does
+# not depend on the console stack, so `tty` names `zgui-console` beside `zgui`.
 [dependencies]
 zgui = { path = "../zgui", version = "0.1.0" }
+# The console entry point, experimental and kept out of the umbrella crate. Only `tty` names it.
+zgui-console = { path = "../zgui-console", version = "0.1.0", optional = true }
 
 # Named by examples only, so the library target does not link them.
 [dev-dependencies]
@@ -33,10 +38,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
-# What the console example needs. An application that runs on a bare Linux console asks the
-# framework for that backend, and this is the same request passed through: an example is an
-# application, and an application turns the feature on itself.
-drm = ["zgui/drm"]
+# What the console example needs. An application that runs on a bare Linux console names the
+# console crate beside the umbrella crate, and this is that dependency.
+drm = ["dep:zgui-console"]
 
 [[example]]
 name = "counter"
