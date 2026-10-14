@@ -56,8 +56,8 @@ usage:
                                       which is also a step of `ci`
   cargo xtask ledger [check]          run every ledger check, or just one of
                                       engines, unsafe, attribution, versions, pinned,
-                                      topo, counters, skips, clock, mutation, inert,
-                                      tag-syntax, spikes
+                                      counters, skips, clock, mutation, inert, tag-syntax,
+                                      spikes
   cargo xtask ledger --self-test      prove every check fails on its planted fixture
   cargo xtask tsan                    run the thread sanitiser over the threaded targets,
                                       and its positive control, which must fire

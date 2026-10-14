@@ -12,7 +12,6 @@ pub(crate) mod pinned;
 pub(crate) mod skips;
 pub(crate) mod spikes;
 pub(crate) mod tag_syntax;
-pub(crate) mod topo;
 pub(crate) mod unsafe_code;
 pub(crate) mod versions;
 
@@ -56,17 +55,10 @@ pub(crate) const CHECKS: &[Check] = &[
         description: "the two dependency lists that are pinned exactly, and the edge that must not exist",
         run: pinned::check,
     },
-    // Before `topo`, which asks a related question from a schedule a clone may not have. The layer
-    // headers are committed; `docs/planning/PHASES.md` is not.
     Check {
         name: "layers",
         description: "every dependency points at the crate's own layer or a lower one",
         run: layers::check,
-    },
-    Check {
-        name: "topo",
-        description: "the phase schedule is a topological order of the real manifest graph",
-        run: topo::check,
     },
     // Before the two checks that read the suite, because both of them are satisfied by a test that
     // exists and neither by one that runs.

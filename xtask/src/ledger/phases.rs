@@ -1,8 +1,8 @@
 //! Which phase introduces which crate, read out of `docs/planning/PHASES.md`.
 //!
 //! The schedule is the source of truth: a crate is assigned to the earliest phase whose
-//! *Creates* paragraph names it. Keeping the map derived rather than hand-maintained is what
-//! makes the topological check meaningful — a second copy of the schedule would drift.
+//! *Creates* paragraph names it. The spikes ledger reads it to tell how far the tree has been
+//! built.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -60,11 +60,6 @@ impl PhaseMap {
     /// The phase that introduces `name`.
     pub(crate) fn phase_of(&self, name: &str) -> Option<u32> {
         self.entries.get(name).copied()
-    }
-
-    /// Whether the map holds no assignments at all.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.entries.is_empty()
     }
 
     /// The highest phase any crate in `names` is assigned to.

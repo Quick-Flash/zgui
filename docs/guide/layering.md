@@ -75,9 +75,7 @@ a layout or paint stage against the golden-image harness, the windowing backend 
 loop — and a test binary carries none of that into a consumer's build. The two seams where a
 development edge does matter are the pinned lists below, which are checked across every section.
 
-The header is committed, so a fork gets the same answer as this tree. `cargo xtask ledger topo` asks
-a related question — a crate may not depend on one that arrives in a later implementation phase —
-from a schedule that is local to a checkout, and it reports that it skipped when there is none.
+The header is committed, so a fork gets the same answer as this tree.
 
 ### Engine naming
 
