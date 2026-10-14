@@ -143,8 +143,10 @@ pub(crate) fn run(root: &Path, hosted: bool) -> Result<()> {
     step("docs");
     docs::run(root)?;
 
+    // The packages are made and not built here: building each one is a second build of the tree,
+    // and `cargo xtask release` does it before a publish.
     step("release");
-    release::run(root)?;
+    release::run(root, release::Packaging::Listed)?;
 
     step("ledger");
     ledger::run(root, None)

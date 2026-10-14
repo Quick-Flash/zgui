@@ -51,9 +51,10 @@ usage:
                                       running window are those of one rebuilt from nothing, at
                                       every document size, which is also a step of `ci`
   cargo xtask docs                    run the documentation gate, which is also a step of `ci`
-  cargo xtask release                 check that the tree can be released in lockstep and that
-                                      its public surface still keeps the last release's promise,
-                                      which is also a step of `ci`
+  cargo xtask release                 check that the tree can be released in lockstep, build
+                                      every published crate from its package, and check that its
+                                      public surface still keeps the last release's promise;
+                                      `ci` runs it without building the packages
   cargo xtask ledger [check]          run every ledger check, or just one of
                                       engines, unsafe, attribution, versions, pinned,
                                       counters, skips, clock, mutation, inert, tag-syntax
@@ -107,7 +108,7 @@ pub(crate) enum Command {
     Verify,
     /// Run the documentation gate.
     Docs,
-    /// Run the lockstep and public-surface compatibility gates.
+    /// Run the lockstep, packaging and public-surface compatibility gates.
     Release,
     /// Run the ledger checks, optionally narrowed to one of them.
     Ledger {

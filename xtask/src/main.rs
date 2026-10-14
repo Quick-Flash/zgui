@@ -91,7 +91,7 @@ fn main() -> ExitCode {
         Command::A11yGeom => oracle::run(&root, "a11y-geom"),
         Command::Verify => verify::run(&root),
         Command::Docs => docs::run(&root),
-        Command::Release => release::run(&root),
+        Command::Release => release::run(&root, release::Packaging::Built),
         Command::Ledger { only } => ledger::run(&root, only.as_deref()),
         Command::LedgerSelfTest => ledger::self_test::run(&root),
         Command::Tsan => tsan::run(&root),
