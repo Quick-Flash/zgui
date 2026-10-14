@@ -1,12 +1,18 @@
 //! The per-element step of the style traversal, owned here so the hint handed to an element's
 //! children can be decided by this crate.
 //!
-//! DERIVED-FROM: stylo 0.19.0 `traversal.rs` (`recalc_style_at`, `compute_style`,
-//! `note_children`), MPL-2.0. The engine's own copy computes the children's hint from the damage
-//! it accumulated, which for a change to a custom property or to any reset property means "cascade
-//! every descendant again". The copy here computes it from what the children can actually observe
-//! of the element's new style — its inherited property groups — and so leaves a subtree alone when
-//! nothing it inherits moved. See [`super::traversal`] for where it is called from.
+//! DERIVED-FROM: stylo 0.19.0 `traversal.rs` (MPL-2.0)
+//!
+//! This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy
+//! of the MPL was not distributed with this file, You can obtain one at
+//! https://mozilla.org/MPL/2.0/.
+//!
+//! `recalc_style_at`, `compute_style` and `note_children` are adapted from that work and have been
+//! modified. The engine's own copy computes the children's hint from the damage it accumulated,
+//! which for a change to a custom property or to any reset property means "cascade every
+//! descendant again". The copy here computes it from what the children can actually observe of the
+//! element's new style — its inherited property groups — and so leaves a subtree alone when nothing
+//! it inherits moved. See [`super::traversal`] for where it is called from.
 
 use std::sync::{Arc, OnceLock};
 
