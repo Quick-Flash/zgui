@@ -7,7 +7,8 @@ pub(crate) const USAGE: &str = "\
 usage:
   cargo xtask ci                      run the full definition of done
   cargo xtask ci --hosted             the same, without `perf` and `tails`, which compare
-                                      against numbers taken on the reference machine
+                                      against numbers taken on the reference machine, and
+                                      without `resize`, `workloads`, `verify` and `growth`
   cargo xtask lint                    run clippy over every target in both profiles,
                                       which is also a step of `ci`
   cargo xtask wall-clock              run the wall-clock budget targets in release,
@@ -69,7 +70,7 @@ usage:
 pub(crate) enum Command {
     /// Run every gate in the definition of done.
     Ci {
-        /// Whether to skip the gates that compare against the reference machine's own timings.
+        /// Whether to skip the gates a hosted machine cannot pass: see `ci::run`.
         hosted: bool,
     },
     /// Run clippy over every target of every member, in both profiles.

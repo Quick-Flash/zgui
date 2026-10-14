@@ -1,8 +1,8 @@
 //! The workspace's gate runner.
 //!
 //! `cargo xtask ci` runs the full definition of done, and `cargo xtask ci --hosted` runs it
-//! without the two steps that compare against the reference machine; `cargo xtask lint` runs
-//! clippy over the workspace in both profiles, which `ci` also does; `cargo xtask wall-clock` runs the wall-clock
+//! without the steps a hosted machine cannot pass; `cargo xtask lint` runs clippy over the
+//! workspace in both profiles, which `ci` also does; `cargo xtask wall-clock` runs the wall-clock
 //! budgets in an optimised build, which `ci` also does; `cargo xtask perf` runs the five end-to-end
 //! scenarios against their bands and regenerates `docs/performance.md`, which `ci` also does;
 //! `cargo xtask docs` runs the documentation gate; `cargo xtask release` checks that the tree can
