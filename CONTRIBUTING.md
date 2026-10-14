@@ -5,8 +5,9 @@ Thanks for your interest in zgui. Questions and ideas are welcome on
 
 ## Setup
 
-- The toolchain is the nightly pinned in `rust-toolchain.toml`. rustup installs it on first use.
-  There is no stable-Rust build.
+- Development uses the nightly pinned in `rust-toolchain.toml`. rustup installs it on first use.
+  The published crates also build on stable Rust from 1.90, and CI checks that. Code in them must
+  not need nightly.
 - On Linux, install the windowing and font libraries: `pkg-config`, `libxkbcommon`, `libwayland`,
   the X11 libraries (`libx11`, `libxcb`, `libxcursor`, `libxi`, `libxrandr`) and `fontconfig`.
 - With Nix, `nix develop` gives you all of the above.

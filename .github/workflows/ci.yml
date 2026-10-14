@@ -178,6 +178,31 @@ jobs:
       - name: Test zgui-profile with counters
         run: cargo test -p zgui-profile --release --features counters
 
+  msrv:
+    # Type-checks the published crates on the oldest stable toolchain they declare. The console
+    # crates are left out: they are not published, and `zgui-xkb` needs nightly.
+    name: Check stable 1.90
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libx11-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libxcb1-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libfontconfig1-dev
+      - name: Install the toolchain
+        run: rustup toolchain install 1.90.0 --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: |
+          cargo +1.90.0 check --workspace --locked \
+            --exclude probe --exclude xtask --exclude zgui-bench --exclude zgui-conformance \
+            --exclude zgui-examples --exclude zgui-console --exclude zgui-platform-drm \
+            --exclude zgui-drm --exclude zgui-evdev --exclude zgui-libinput --exclude zgui-seat \
+            --exclude zgui-xkb
+
   cross:
     # Type-checks for Windows and macOS. It does not link or run anything. It catches Linux-only
     # imports, ungated dependencies and bounds that only one platform satisfies.
