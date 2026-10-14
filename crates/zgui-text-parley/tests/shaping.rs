@@ -122,9 +122,11 @@ fn a_rebreak_equals_a_fresh_shape_at_the_same_width() {
     assert_eq!(rebroken.geometry.size, directly.geometry.size);
 }
 
-/// A colour change moves neither key, so it costs nothing at all.
+/// Each brush slot is shaped once, because the shaped glyphs name the slot they are drawn through.
+///
+/// A re-theme moves the colour behind a slot and keeps the slot, so it costs no shaping.
 #[test]
-fn a_brush_change_costs_nothing() {
+fn each_brush_slot_is_shaped_once() {
     let _guard = counting();
     let (_fonts, mut shaper) = support::shaper(Controls::Mark);
     let mut cache = ParagraphCache::new();
@@ -155,9 +157,9 @@ fn a_brush_change_costs_nothing() {
             &BreakRequest::new(&content, Some(CssPx(300.0))),
         );
     }
-    assert_eq!(counter::get(Counter::TextShaped), 1);
-    assert_eq!(counter::get(Counter::TextRebroken), 1);
-    assert_eq!(cache.len(), 1, "one entry serves all three brushes");
+    assert_eq!(counter::get(Counter::TextShaped), 3);
+    assert_eq!(counter::get(Counter::TextRebroken), 3);
+    assert_eq!(cache.len(), 3, "each brush has an entry of its own");
 }
 
 /// Re-styling `vertical-align` moves the box without re-shaping the paragraph.

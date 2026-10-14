@@ -168,8 +168,10 @@ impl<E> ParagraphCache<E> {
 /// reimplement it and get the order wrong: hash the content, shape it if it is new, then break the
 /// glyphs — new or not — at the width being asked about.
 ///
-/// A width change therefore costs a break. A colour change costs neither, because the brush is not
-/// in either key. A `vertical-align` change costs a break, because the request carries the shift.
+/// A width change therefore costs a break. A colour change costs neither, because it moves the
+/// colour behind a brush slot and keeps the slot. A change of slot costs a shape, because the slot is
+/// in the paragraph key. A `vertical-align` change costs a break, because the request carries the
+/// shift.
 pub fn lay_out<'cache, S: ParagraphShaper>(
     shaper: &mut S,
     cache: &'cache mut ParagraphCache<S::Engine>,

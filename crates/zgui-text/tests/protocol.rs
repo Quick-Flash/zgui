@@ -94,9 +94,12 @@ fn re_breaking_at_the_same_width_is_free() {
     );
 }
 
-/// A brush change is a paint change: neither the key nor the shape moves.
+/// A change of brush slot is a shaping change, because the shaped glyphs name the slot they are
+/// drawn through.
+///
+/// A re-theme moves the colour behind a slot and keeps the slot, so it does not come here.
 #[test]
-fn re_theming_never_reshapes() {
+fn a_brush_slot_change_costs_one_shape() {
     let _guard = counting();
     let mut scene = Scene::plain(&lorem(), TextStyle::initial());
     scene.run(Some(CssPx(300.0)));
@@ -104,14 +107,13 @@ fn re_theming_never_reshapes() {
     let before = ParagraphKey::of(&scene.content());
     scene.runs[0].brush = PaintSlot(7);
     let after = ParagraphKey::of(&scene.content());
-    assert_eq!(
+    assert_ne!(
         before, after,
-        "a brush change must not move the shaping key"
+        "two slots must not share an entry, or both draw through the first"
     );
 
     scene.run(Some(CssPx(300.0)));
-    assert_eq!(scene.shaper.shapes, 1);
-    assert_eq!(scene.shaper.breaks, 1, "and must not even cost a break");
+    assert_eq!(scene.shaper.shapes, 2);
 }
 
 /// Changing the font size is a shaping change, and costs exactly one shape.
