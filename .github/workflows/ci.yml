@@ -13,8 +13,17 @@ jobs:
   debug:
     name: debug — fmt, clippy, test, ledgers
     runs-on: ubuntu-24.04
+    env:
+      # Debug information for every test binary in the workspace does not fit on the runner.
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
+      # The image ships toolchains this workspace never uses. A debug and a release build of every
+      # target need the room.
+      - name: free runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: install system libraries
         run: |
           sudo apt-get update
@@ -39,12 +48,24 @@ jobs:
       # machine, and the gates that fail on the current tree (`xtask/src/ci.rs` lists them).
       - name: cargo xtask ci
         run: cargo xtask ci --hosted
+      # Printed whatever the outcome, so a runner that ran out of room says so.
+      - name: report disk and memory
+        if: always()
+        run: |
+          df -h /
+          free -h
 
   release:
     name: release — build and test
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # The image ships toolchains this workspace never uses. A debug and a release build of every
+      # target need the room.
+      - name: free runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: install system libraries
         run: |
           sudo apt-get update
@@ -58,6 +79,12 @@ jobs:
       # and this workflow execute the same assertions rather than only this one doing so.
       - run: cargo build --workspace --release
       - run: cargo test --workspace --release
+      # Printed whatever the outcome, so a runner that ran out of room says so.
+      - name: report disk and memory
+        if: always()
+        run: |
+          df -h /
+          free -h
 
   doc:
     name: doc — every published crate, warnings denied
