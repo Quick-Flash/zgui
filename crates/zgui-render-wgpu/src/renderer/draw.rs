@@ -247,13 +247,19 @@ impl Renderer for WgpuRenderer {
             );
         }
         let mut recorded = Recorded::default();
+        // A frame of several damage rectangles can prepare a round more than once, so a failed
+        // round is counted once per frame.
+        let mut dropped = false;
         for (round, segments) in plan.runs() {
             if let (Some(round), Some(vectors)) = (round, vectors.as_ref()) {
                 let finished = core::mem::replace(&mut encoder, self.frame_encoder());
                 self.gpu.queue().submit([finished.finish()]);
-                self.rasterise_round(scene, vectors, round);
+                dropped |= !self.rasterise_round(scene, vectors, round);
             }
             recorded += self.record(&mut encoder, &plan, segments, marks.extent);
+        }
+        if dropped {
+            counter::bump(Counter::VectorFramesDropped);
         }
         self.groups.release_all();
         if plan.deferred > 0 {
@@ -566,13 +572,18 @@ impl WgpuRenderer {
     /// Rasterises a round after the first, between two submissions of the frame.
     ///
     /// The composites of the round are already planned, so a round that fails cannot be taken out
-    /// of the plan. Its layers were cleared, so its composites draw nothing, and the frame is
-    /// counted.
-    fn rasterise_round(&mut self, scene: &Scene, plan: &zgui_render::VectorPlan, round: usize) {
+    /// of the plan. Its layers were cleared, so its composites draw nothing. Returns whether the
+    /// round was rasterised, so that the caller can count the frame.
+    #[must_use]
+    fn rasterise_round(
+        &mut self,
+        scene: &Scene,
+        plan: &zgui_render::VectorPlan,
+        round: usize,
+    ) -> bool {
         let Err(failure) = self.prepare_round(scene, plan, round) else {
-            return;
+            return true;
         };
-        counter::bump(Counter::VectorFramesDropped);
         assert!(
             !(self.vector_shortfall_is_fatal
                 && matches!(failure, zgui_render::VectorError::OutOfCapacity { .. })),
@@ -583,6 +594,7 @@ impl WgpuRenderer {
             round,
             "the vector rasteriser could not prepare a round, so its passes draw nothing"
         );
+        false
     }
 
     /// Records `segments` of `plan` into `encoder`.

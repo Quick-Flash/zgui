@@ -80,6 +80,8 @@ pub trait VectorRaster: 'static {
 
     /// Turns the display list's plan into whatever this implementation needs to execute it.
     ///
+    /// Called once per frame, before any round of the frame is prepared.
+    ///
     /// Returns an empty plan when nothing survived, and the caller is expected to do nothing at all
     /// in that case: an empty pass over a full-size surface is not free.
     ///
@@ -96,8 +98,10 @@ pub trait VectorRaster: 'static {
     /// Rasterises every pass of the frame's round.
     ///
     /// Called before the commands that composite the round are recorded. A plan of several rounds
-    /// is prepared once per round, in order, and each round may reuse the targets of the round
-    /// before it.
+    /// is prepared round by round, in order, and each round may reuse the targets of the round
+    /// before it. A frame of several damage rectangles draws the rounds again for each rectangle,
+    /// so one frame can prepare the same round more than once. Per-frame bookkeeping therefore
+    /// belongs in [`plan`](VectorRaster::plan).
     ///
     /// # Errors
     ///

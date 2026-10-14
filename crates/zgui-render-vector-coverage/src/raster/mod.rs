@@ -63,7 +63,7 @@ pub struct CoverageRaster {
     layered: Vec<Vec<usize>>,
     /// The buffers the three of those are uploaded to.
     buffers: Buffers,
-    /// What the last frame cost and could not do.
+    /// What the last frame cost and could not do, over every round it rasterised.
     last: Rasterised,
     /// How many layers the last frame's passes needed.
     depth: u32,
@@ -126,6 +126,8 @@ impl CoverageRaster {
     }
 
     /// What the last frame cost, and what it could not do.
+    ///
+    /// A round that a frame rasterises again counts again.
     pub fn last_frame(&self) -> Rasterised {
         self.last
     }
@@ -396,6 +398,8 @@ impl VectorRaster for CoverageRaster {
         if passes.is_empty() {
             return VectorPlan::empty();
         }
+        // A frame plans once and can prepare a round more than once, so the frame starts here.
+        self.last = Rasterised::default();
         let mut plan = VectorPlan::resourcing(passes);
         // Each pass gets a bin of its own size in some layer, so passes share a layer whatever they
         // cover on the surface. A frame larger than one scratch is cut into rounds, and each round
@@ -439,9 +443,6 @@ impl VectorRaster for CoverageRaster {
     }
 
     fn prepare(&mut self, frame: &mut VectorFrame<'_>) -> Result<(), VectorError> {
-        if frame.round == 0 {
-            self.last = Rasterised::default();
-        }
         self.segments.clear();
         self.runs.clear();
         self.items.clear();
@@ -449,6 +450,7 @@ impl VectorRaster for CoverageRaster {
         if frame.is_empty() {
             return Ok(());
         }
+        let unclippable = self.last.unclippable;
         let round = frame.passes();
         for index in round.clone() {
             let pass = frame.plan.passes[index].clone();
@@ -461,9 +463,10 @@ impl VectorRaster for CoverageRaster {
         self.buffers.segments.write(&self.gpu, &self.segments);
         self.buffers.runs.write(&self.gpu, &self.runs);
         self.record()?;
-        if frame.is_last_round() && self.last.unclippable > 0 {
+        let unclippable = self.last.unclippable - unclippable;
+        if unclippable > 0 {
             tracing::warn!(
-                items = self.last.unclippable,
+                items = unclippable,
                 "vector items left undrawn because a residual clip had no shape to apply"
             );
         }

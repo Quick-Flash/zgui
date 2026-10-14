@@ -42,9 +42,9 @@ pub struct VelloRaster {
     layered: Vec<Vec<usize>>,
     /// Each item's encoded form, kept across frames.
     encodings: Encodings,
-    /// What the last frame's encoding cost and could not do.
+    /// What the last frame's encoding cost and could not do, over every round it rasterised.
     last: Encoded,
-    /// How many passes the last frame rasterised.
+    /// How many passes the last frame rasterised, over every round it rasterised.
     passes: u32,
     /// How many layers the last frame's passes needed.
     depth: u32,
@@ -127,11 +127,15 @@ impl VelloRaster {
     }
 
     /// What the last frame's encoding cost, and what it could not do.
+    ///
+    /// A round that a frame rasterises again counts again.
     pub fn last_frame(&self) -> Encoded {
         self.last
     }
 
     /// How many passes the last frame rasterised.
+    ///
+    /// A round that a frame rasterises again counts again.
     pub fn passes(&self) -> u32 {
         self.passes
     }
@@ -185,15 +189,12 @@ impl VelloRaster {
 
     /// Encodes and rasterises one round of a frame's passes.
     fn prepare_frame(&mut self, frame: &mut VectorFrame<'_>) -> Result<(), VectorError> {
-        if frame.round == 0 {
-            self.last = Encoded::default();
-            self.passes = 0;
-        }
         if frame.is_empty() {
             return Ok(());
         }
         self.group(frame.plan, frame.passes());
         let (hits, misses) = self.encodings.counts();
+        let before = self.last;
         let mut renderer = self.shared.lock();
         for layer in 0..self.layered.len() {
             // One rasterisation for the whole layer, because everything in it is one picture: each
@@ -256,18 +257,17 @@ impl VelloRaster {
         let (hits_now, misses_now) = self.encodings.counts();
         counter::add(Counter::VectorEncodeHits, hits_now - hits);
         counter::add(Counter::VectorEncodeMisses, misses_now - misses);
-        if !frame.is_last_round() {
-            return Ok(());
-        }
-        if self.last.unclippable > 0 {
+        let unclippable = self.last.unclippable - before.unclippable;
+        if unclippable > 0 {
             tracing::warn!(
-                items = self.last.unclippable,
+                items = unclippable,
                 "vector items left undrawn because a residual clip had no shape to apply"
             );
         }
-        if self.last.unpaintable > 0 {
+        let unpaintable = self.last.unpaintable - before.unpaintable;
+        if unpaintable > 0 {
             tracing::debug!(
-                items = self.last.unpaintable,
+                items = unpaintable,
                 "vector items left undrawn because nothing here paints what they asked for"
             );
         }
@@ -287,6 +287,11 @@ impl VectorRaster for VelloRaster {
         if passes.is_empty() {
             return VectorPlan::empty();
         }
+        // A frame plans once and can prepare a round more than once, so the frame starts here. An
+        // encoding the frame before did not use ages here.
+        self.encodings.end_frame();
+        self.last = Encoded::default();
+        self.passes = 0;
         let mut plan = VectorPlan::resourcing(passes);
         // Each pass gets a bin of its own size in some layer, so passes share a layer whatever they
         // cover on the surface. A frame larger than one scratch is cut into rounds, and each round
@@ -330,13 +335,7 @@ impl VectorRaster for VelloRaster {
     }
 
     fn prepare(&mut self, frame: &mut VectorFrame<'_>) -> Result<(), VectorError> {
-        let prepared = self.prepare_frame(frame);
-        // Every return of the frame's last round ends it, so an encoding no frame drew ages
-        // whatever happened.
-        if frame.is_last_round() {
-            self.encodings.end_frame();
-        }
-        prepared
+        self.prepare_frame(frame)
     }
 
     fn memory(&self) -> MemoryReport {

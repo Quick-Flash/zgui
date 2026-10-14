@@ -61,9 +61,4 @@ impl<'frame> VectorFrame<'frame> {
     pub fn is_empty(&self) -> bool {
         self.passes().is_empty()
     }
-
-    /// Whether this is the plan's last round.
-    pub fn is_last_round(&self) -> bool {
-        self.round + 1 >= self.plan.rounds()
-    }
 }

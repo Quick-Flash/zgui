@@ -471,3 +471,61 @@ fn rounds_run_again_for_each_damaged_rectangle() {
         );
     }
 }
+
+/// A frame that prepares its rounds once per damaged rectangle reports all of that work, and the
+/// second frame reuses every encoding of the first.
+///
+/// The renderer prepares the rounds again for each rectangle, so a rasteriser that starts its
+/// frame at round zero reports only the last rectangle, and one that ages its cache at the last
+/// round ages it once per rectangle.
+#[test]
+fn a_frame_that_prepares_its_rounds_twice_reports_the_whole_frame() {
+    let Some(harness) = harness_at(SIDE, Which::Vello) else {
+        return;
+    };
+    let gpu = std::sync::Arc::clone(harness.gpu());
+    let mut raster = VelloRaster::new(&gpu, SIDE as u32, SIDE as u32)
+        .expect("a rasteriser")
+        .with_capacity(SMALL);
+    let scene = staircase(64, &DamageSet::full());
+    let placements = zgui_scene::Placements::of(&scene.spatial);
+    let frame = |raster: &mut VelloRaster| {
+        let plan = raster.plan(scene.pass_plan());
+        for _ in 0..2 {
+            for round in 0..plan.rounds() {
+                raster.clear_targets(&plan, round);
+                let mut frame = VectorFrame::new(
+                    &plan,
+                    &scene.primitives.vectors,
+                    &scene.clips,
+                    &scene.paints,
+                    &placements,
+                )
+                .in_round(round);
+                raster.prepare(&mut frame).expect("every round fits");
+            }
+        }
+        plan.passes.len() as u32
+    };
+
+    let passes = frame(&mut raster);
+    assert!(
+        raster.rounds() > 1,
+        "the fixture has to take several rounds"
+    );
+    assert_eq!(
+        raster.passes(),
+        2 * passes,
+        "each rectangle's rounds count toward the frame"
+    );
+    let (held, (_, misses)) = raster.cache();
+
+    let passes = frame(&mut raster);
+    assert_eq!(raster.passes(), 2 * passes);
+    let (now, (_, misses_now)) = raster.cache();
+    assert_eq!(now, held, "the second frame changed the cache");
+    assert_eq!(
+        misses_now, misses,
+        "the second frame encoded again what the first one encoded"
+    );
+}
