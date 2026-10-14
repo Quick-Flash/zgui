@@ -282,6 +282,10 @@ impl<'gpu> PlanBuilder<'gpu> {
         }
         self.round = round;
         let open = self.open.as_ref().map(|pass| (pass.target, pass.scissor));
+        debug_assert!(
+            !matches!(open, Some((TargetRef::MarksPage(_), _))),
+            "a marks page opens again with a clear, so a round must not cut one"
+        );
         self.end_pass();
         self.plan.segments.push(Segment::Round(round));
         if let Some((target, scissor)) = open {
