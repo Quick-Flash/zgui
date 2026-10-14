@@ -487,6 +487,7 @@ fn a_forwards_fill_mode_holds_the_last_keyframe_after_the_animation_has_ended() 
         drawn.iter().any(|value| *value > held + 100),
         "the panel never faded at all, so settling faded proves nothing: {drawn:?}"
     );
+    support::cross_maintenance(&mut harness);
     assert!(
         harness.parked_deadline().is_none(),
         "a finished animation kept asking for frames"
@@ -539,6 +540,7 @@ fn a_transition_that_ends_reports_its_end_to_a_listener() {
         reported.abs_diff(Duration::from_millis(200)) < Duration::from_millis(1),
         "the reported elapsed time was {reported:?}, not the transition's 200ms duration"
     );
+    support::cross_maintenance(&mut harness);
     assert!(
         harness.parked_deadline().is_none(),
         "the loop kept a deadline for an animation that had ended"

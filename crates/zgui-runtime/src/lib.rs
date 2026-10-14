@@ -114,7 +114,7 @@ pub use crate::wake::{FrameGate, RuntimeWaker};
 pub use crate::window::anim::cadence::AnimationCadence;
 pub use crate::window::present::PresentPace;
 pub use crate::window::resize::ResizePace;
-pub use crate::window::{Window, WindowContent};
+pub use crate::window::{MAINTENANCE_DELAY, Window, WindowContent};
 pub use crate::windows::WindowOptions;
 pub use crate::windows::{
     CloseGuard, WindowHandle, WindowId, Windows, on_close_request, try_use_window, try_use_windows,

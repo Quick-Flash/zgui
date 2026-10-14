@@ -6,6 +6,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use zgui_runtime::MAINTENANCE_DELAY;
 use zgui_runtime::embed::{EmbedHost, EmbedMaintenanceCx, EmbedSyncCx, EmbedSyncReport};
 use zgui_view::{BuildCx, IntoView, View};
 
@@ -33,7 +34,7 @@ fn a_maintenance_deadline_trims_without_painting_or_presenting() {
     harness.settle(8);
     harness.reset_counts();
 
-    harness.advance(Duration::from_secs(2));
+    harness.advance(MAINTENANCE_DELAY);
     assert_eq!(maintained.get(), 1, "the idle maintenance hook ran once");
     assert_eq!(harness.pump(), 0, "maintenance did not build a frame");
     assert_eq!(
@@ -72,7 +73,7 @@ fn a_maintenance_wake_notes_every_recorded_chunk_for_the_next_frame() {
     harness.settle(8);
     let before = harness.app().windows()[0].scene().chunk_inserted().len();
 
-    harness.advance(Duration::from_secs(2));
+    harness.advance(MAINTENANCE_DELAY);
     let after = harness.app().windows()[0].scene().chunk_inserted().len();
     assert!(
         after > before,

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use zgui_platform::Surface;
 use zgui_platform_headless::Harness;
 use zgui_render::{RenderTarget, Renderer};
-use zgui_runtime::{App, AppError, Runtime};
+use zgui_runtime::{App, AppError, MAINTENANCE_DELAY, Runtime};
 use zgui_view::{Anchor, BuildCx};
 
 /// Builds an application whose window holds `view`, with the capture renderer under it.
@@ -86,6 +86,28 @@ where
         }))
         .into_handler(view)
         .expect("the reactive runtime installs")
+}
+
+/// Runs the idle maintenance wake that the last normal frame armed, if the loop parks on it.
+///
+/// The parked deadline must be no further than [`MAINTENANCE_DELAY`] away. Reaching it must build
+/// no frame and leave no deadline, so a test that then expects a silent loop still catches a spin.
+pub fn cross_maintenance(harness: &mut Harness<Runtime>) {
+    let Some(deadline) = harness.parked_deadline() else {
+        return;
+    };
+    let wait = deadline.saturating_duration_since(harness.now());
+    assert!(
+        wait <= MAINTENANCE_DELAY,
+        "the loop parks {wait:?} out, later than the maintenance wake"
+    );
+    harness.advance(wait);
+    assert_eq!(harness.pump(), 0, "the maintenance wake built a frame");
+    assert_eq!(
+        harness.parked_deadline(),
+        None,
+        "a deadline is still parked after the maintenance wake"
+    );
 }
 
 /// The first line fragment in the window's layout, with the box it belongs to.

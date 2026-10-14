@@ -561,7 +561,7 @@ impl Window {
 
         // Measured from when the last normal frame finished, so a continuously active document
         // never trims a working set and a parked one gets exactly one maintenance wake.
-        self.maintenance_due = Some(clock.now() + std::time::Duration::from_secs(2));
+        self.maintenance_due = Some(clock.now() + crate::window::MAINTENANCE_DELAY);
 
         // After the cascade and therefore after everything that can start or finish an animation,
         // and against the moment the frame was built for rather than the moment it ended. This is

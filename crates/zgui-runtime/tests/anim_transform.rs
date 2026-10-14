@@ -379,6 +379,7 @@ fn a_bar_goes_back_where_its_style_puts_it_when_the_animation_ends() {
         settled[0].0, track[0].0,
         "the bar did not come back to the place its own style puts it: {settled:?}"
     );
+    support::cross_maintenance(&mut harness);
     assert!(
         harness.parked_deadline().is_none(),
         "the loop kept a deadline for an animation that had ended"

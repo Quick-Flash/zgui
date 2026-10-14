@@ -479,6 +479,7 @@ fn the_window_losing_the_keyboard_settles_the_field_exactly_once() {
         "the element lost focus too, so coming back puts the caret nowhere"
     );
 
+    support::cross_maintenance(&mut script.harness);
     assert_eq!(
         script.next_wake(),
         None,

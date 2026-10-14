@@ -220,6 +220,7 @@ fn configures_arriving_after_a_resize_frame_wait_for_the_next_one_and_are_still_
         wide(*sizes.last().expect("the burst is not empty")),
         "the deferred configures were never drawn: the deadline that owes them was not installed"
     );
+    support::cross_maintenance(&mut harness);
     assert!(
         harness.parked_deadline().is_none(),
         "the window is still asking to be woken for a resize it has already drawn"
@@ -322,6 +323,7 @@ fn a_window_that_has_stopped_being_resized_runs_no_frames_at_all() {
     let surface = only_surface(&harness);
     harness.deliver(surface, SurfaceEvent::Resized(wide(1024.0)));
     harness.settle(8);
+    support::cross_maintenance(&mut harness);
     harness.reset_counts();
 
     let frames = harness.run_for(Duration::from_secs(2), Duration::from_millis(8));

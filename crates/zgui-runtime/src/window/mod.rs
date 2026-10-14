@@ -59,6 +59,9 @@ pub(crate) const STARVE_BACKOFF_START: Duration = Duration::from_secs(1);
 /// The most a starvation probe waits. A cap because the probe is also what recovers a *visible*
 /// window from a compositor hiccup no event announces the end of.
 pub(crate) const STARVE_BACKOFF_CAP: Duration = Duration::from_secs(16);
+
+/// How long after its last normal frame a window waits before it trims idle resources.
+pub const MAINTENANCE_DELAY: Duration = Duration::from_secs(2);
 use crate::timer::Timers;
 use crate::wake::FrameGate;
 
