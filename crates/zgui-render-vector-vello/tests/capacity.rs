@@ -359,7 +359,7 @@ fn a_stack_deeper_than_the_most_layers_draws_every_pass() {
     assert_eq!(
         (rasterised.depth, rasterised.rounds),
         (1, 1),
-        "small passes cost area, not a layer each"
+        "small stacked passes share one layer"
     );
     if COUNTERS_ENABLED {
         assert_eq!(

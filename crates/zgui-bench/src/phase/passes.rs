@@ -1,9 +1,9 @@
 //! How many vector passes a frame plans, and how many scratch layers they need between them.
 //!
 //! Two questions, and the second is the one a budget answers. A pass is a rasterisation of a region
-//! of the surface into a bin of its own size in a scratch layer, so what a scratch texture costs is
-//! the area of a frame's passes and not how many there are. This reports both, over a scroll, from
-//! the document's own pass plan rather than from a device.
+//! of the surface into a bin of its own size in a scratch layer, so the area of a frame's passes
+//! sets what a scratch texture costs. This reports both, over a scroll, from the document's own
+//! pass plan.
 //!
 //! The sample is taken **as the frame is drawn** and not afterwards. A frame's pass plan is a
 //! function of the damage it answered, and by the time the loop has gone quiet the damage has been

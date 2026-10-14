@@ -142,8 +142,8 @@ impl VelloRaster {
 
     /// How many scratch layers the last frame's passes needed in its fullest round.
     ///
-    /// The frame's own demand, which follows the area of its passes. It is not how many layers are
-    /// allocated, which never falls below a floor and follows the demand down only slowly.
+    /// The frame's own demand, which follows the area of its passes. The allocated layers
+    /// ([`layers`](Self::layers)) never fall below a floor and follow the demand down slowly.
     pub fn depth(&self) -> u32 {
         self.depth
     }

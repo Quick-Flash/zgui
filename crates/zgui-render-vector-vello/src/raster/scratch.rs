@@ -9,9 +9,9 @@ pub const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// A two-dimensional array texture with room for one round of a frame's passes.
 ///
-/// Each pass is rasterised into a bin of its own size in some layer, so what decides the depth is
-/// the area of a frame's vector work, not how much of it overlaps on the surface. A frame of five
-/// hundred passes stacked over one point costs one layer when their bins fit in it.
+/// Each pass is rasterised into a bin of its own size in some layer, so the area of a frame's vector
+/// work decides the depth. A frame of five hundred passes stacked over one point costs one layer
+/// when their bins fit in it.
 ///
 /// `STORAGE_BINDING` is what the path renderer needs; `RENDER_ATTACHMENT` is what the pre-clear
 /// needs, and the pre-clear is not optional. A rasterisation that overflows a fixed buffer can
