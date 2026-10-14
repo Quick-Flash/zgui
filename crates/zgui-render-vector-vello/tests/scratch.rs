@@ -5,6 +5,7 @@ mod support;
 use zgui_bits::DamageSet;
 use zgui_color::Color;
 use zgui_render::VectorRaster;
+use zgui_render::vector::Extent;
 use zgui_render_vector_coverage::CoverageRaster;
 use zgui_render_vector_vello::VelloRaster;
 use zgui_render_vector_vello::raster::scratch::Scratch;
@@ -15,7 +16,9 @@ use support::{Which, harness_at, opaque, path, quad, rect, scene_at, vector};
 /// The extent every scene here fits in.
 const SIDE: i32 = 640;
 
-/// A scene whose passes reach the far corner of the surface and stack `deep` high at the near one.
+/// A scene with `deep` passes stacked at the near corner and one pass that covers the far quarter.
+///
+/// The far pass is larger than one size class, so the scratch has to grow past the smallest extent.
 fn wide(deep: u32) -> Scene {
     let mut scene = scene_at(SIDE);
     quad(
@@ -40,7 +43,12 @@ fn wide(deep: u32) -> Scene {
     vector(
         &mut scene,
         deep,
-        path(rect(SIDE as f32 - 32.0, SIDE as f32 - 32.0, 24.0, 24.0)),
+        path(rect(
+            SIDE as f32 / 2.0,
+            SIDE as f32 / 2.0,
+            SIDE as f32 / 2.0 - 16.0,
+            SIDE as f32 / 2.0 - 16.0,
+        )),
         opaque(255, 255, 255),
         ClipId::ROOT,
     );
@@ -81,9 +89,11 @@ fn the_scratch_shrinks_when_the_content_does() {
 
     let large = wide(6);
     raster.plan(large.pass_plan());
+    // Every extent is rounded up to a whole size class, so one class is the smallest there is.
+    let floor = (Extent::SIZE_CLASS, Extent::SIZE_CLASS);
     let grown = raster.extent();
     assert!(
-        grown > (16, 16),
+        grown > floor,
         "the fixture has to reach further than the narrow one, or nothing here shrinks: {grown:?}"
     );
     assert!(
@@ -97,7 +107,7 @@ fn the_scratch_shrinks_when_the_content_does() {
     raster.plan(small.pass_plan());
     assert_eq!(
         raster.extent(),
-        (16, 16),
+        floor,
         "a settled window has to get its video memory back"
     );
     assert_eq!(
