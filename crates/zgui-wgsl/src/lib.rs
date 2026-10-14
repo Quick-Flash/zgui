@@ -20,6 +20,7 @@
 //! is one piece of text compiled seven times, which is what makes a clip on a quad, a clip on a
 //! glyph and a clip on an application's effect provably the same clip.
 
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
 mod mode;

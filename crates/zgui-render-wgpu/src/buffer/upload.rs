@@ -2,7 +2,7 @@
 //!
 //! `Queue::write_buffer` allocates and maps a one-shot staging buffer for every call on native
 //! backends. A frame writes a dozen buffers, so an unlucky allocator or mapping round-trip can
-//! turn otherwise tiny uploads into a several-millisecond CPU spike. This belt suballocates those
+//! turn otherwise tiny uploads into a several-millisecond CPU stall. This belt suballocates those
 //! writes from a few mapped chunks and recycles them after the submitted copies complete.
 
 use std::sync::mpsc;

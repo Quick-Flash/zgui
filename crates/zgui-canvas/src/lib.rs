@@ -32,6 +32,7 @@
 //! damaged canvas per frame — and the alternative, confining mutation to the UI thread, would
 //! make the first background producer copy its whole scene across a channel every frame.
 
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
 use std::sync::{Arc, Mutex, OnceLock, Weak};

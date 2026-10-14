@@ -53,6 +53,7 @@
 //! shell, and paint records its primitives in the ordinary replay cache — an element that has not
 //! said it changed is replayed without being asked.
 
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
 use std::cell::{Cell, RefCell};

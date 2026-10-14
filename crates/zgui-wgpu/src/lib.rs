@@ -30,6 +30,7 @@
 //! producer share one device queue, so writes submitted before a present are ordered before the
 //! frame that samples them.
 
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 // Proving a wgpu handle `Send` and `Sync` walks a type chain deeper than the default limit of 128,
 // which newer compilers report as a future error.
