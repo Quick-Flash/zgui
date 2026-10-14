@@ -288,11 +288,18 @@ mod tests {
         let waker = runtime();
         let node = Mounted::new();
         let done = StdRc::new(Cell::new(false));
+        // Holds the worker until the wakes before it have been cleared, so its own wake cannot be
+        // cleared with them.
+        let (go, gate) = std::sync::mpsc::channel::<()>();
 
         node.with(|| {
             let done = StdRc::clone(&done);
             spawn_local(async move {
-                let value = background(async { 6 * 7 }).await;
+                let value = background(async move {
+                    gate.recv().ok();
+                    6 * 7
+                })
+                .await;
                 done.set(value == 42);
             });
         });
@@ -300,12 +307,13 @@ mod tests {
         // The first flush starts the background work and parks on the oneshot.
         flush();
         waker.take();
+        go.send(()).expect("the worker is waiting");
 
-        // Wait for the worker without spinning the reactive runtime.
-        let mut frames = 0;
-        while waker.count() == 0 && frames < 1_000 {
-            std::thread::yield_now();
-            frames += 1;
+        // Wait for the worker without spinning the reactive runtime. The deadline only stops a
+        // broken wake from hanging the suite; a loaded machine can take far longer than one yield.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while waker.count() == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert_eq!(waker.take(), 1, "the finished worker asked for one frame");
 
