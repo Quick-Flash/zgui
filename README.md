@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/c04cad5f-5e84-42b6-be3a-4ee1955c45d6" alt="Applications built with zgui: a Kubernetes client, a music player, a voice chat, a code editor and a mind map" width="100%" />
+  <img src="https://github.com/user-attachments/assets/1f8f36b1-119f-43bd-95d3-40b2d4804ea6" alt="Applications built with zgui: a Kubernetes client, a music player, a voice chat, a code editor and a mind map" width="100%" />
+
 </p>
 
 <h1 align="center">zgui</h1>
@@ -88,7 +89,7 @@ cargo run -p zgui-examples --example counter
 ## Components and theming
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/6b25f12c-f288-48ec-aff8-c439267281e8" alt="A dashboard built from zgui-ui components, in light and dark" width="100%" />
+  <img src="https://github.com/user-attachments/assets/a6acc01a-ef0a-41b8-8211-201eca86aedf" alt="A dashboard built from zgui-ui components, in light and dark" width="100%" />
 </p>
 
 `zgui-ui` ports most of [shadcn/ui](https://ui.shadcn.com): buttons, fields, selects, menus,
@@ -129,7 +130,7 @@ motion. A theme sets some or all of them, and `ThemeProvider` applies it to a wi
 Changing a theme at runtime is a signal write.
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/24087c21-243b-4e8d-9681-c4166f20233d" alt="The same panel in six themes" width="100%" />
+  <img src="https://github.com/user-attachments/assets/e8548755-8e54-437a-ae86-01fab631b711" alt="The same panel in six themes" width="100%" />
 </p>
 
 ```rust
