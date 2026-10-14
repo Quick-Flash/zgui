@@ -8,11 +8,10 @@
 use cephal::compute::block::BlockContext;
 use cephal::schedule::Incremental;
 use cephal::tree::{
-    CacheAccess, ChildRequest, IdentSuffix, LayoutInput, LayoutOutput, LayoutTree as EngineTree,
-    NodeCache, NodeId, RunMode,
+    AnswerSource, CacheAccess, ChildRequest, IdentSuffix, LayoutInput, LayoutOutput,
+    LayoutTree as EngineTree, NodeCache, NodeId, RunMode,
 };
 use cephal::{Layout, Style};
-use zgui_dom::side::BoxKey;
 use zgui_profile::{Counter, counter};
 
 use crate::key::{from_node_id, to_node_id};
@@ -145,14 +144,14 @@ impl<C: MeasureContent> EngineTree for LayoutTree<'_, C> {
         cephal::compute::compute_child_layout(self, node, inputs, block_ctx)
     }
 
-    fn after_layout(
+    fn observe_answer(
         &mut self,
         node: NodeId,
         inputs: &LayoutInput,
-        output: &mut LayoutOutput,
-        cached: bool,
+        output: &LayoutOutput,
+        source: AnswerSource,
     ) {
-        observe(self, node, inputs, output, cached);
+        observe(self, node, inputs, output, source);
     }
 
     fn batches_help(&self) -> bool {
@@ -228,111 +227,25 @@ impl<C: MeasureContent> Incremental for LayoutTree<'_, C> {
 /// Accounts for one answer and records the baselines it carries, on every answer the engine
 /// hands out.
 ///
-/// The baselines the algorithms do not report come from the content, and both are recorded on
-/// the box — on every answer, because it may have come from the cache without any algorithm
-/// running. A box whose baselines were recorded by one pass and served from the cache in the
-/// next would otherwise keep whatever the first pass happened to see.
+/// The baselines are recorded on every answer, because an answer may come from the cache without
+/// any algorithm running. A box whose baselines were recorded by one pass and served from the
+/// cache in the next would otherwise keep whatever the first pass happened to see.
 fn observe<C: MeasureContent>(
     tree: &mut LayoutTree<'_, C>,
     node: NodeId,
     inputs: &LayoutInput,
-    output: &mut LayoutOutput,
-    cached: bool,
+    output: &LayoutOutput,
+    source: AnswerSource,
 ) {
+    let cached = source == AnswerSource::Cached;
     match (inputs.run_mode, cached) {
         (RunMode::PerformLayout, false) => counter::bump(Counter::NodesRelaidOut),
         (RunMode::ComputeSize, false) => counter::bump(Counter::SizesMeasured),
         (RunMode::ComputeSize, true) => counter::bump(Counter::SizesHeld),
         _ => {}
     }
-    let key = from_node_id(node);
-    let fc = tree.node_of(node).fc;
-    let first = output
-        .baselines
-        .first
-        .or_else(|| first_baseline_of_content(tree, key, fc));
-    // A leaf reports its own last baseline. A container's is its last in-flow child's, which the
-    // algorithms do not compute: they hand the first back as the last.
-    let leaf = !engine_sees_children(fc);
-    let last = leaf
-        .then_some(output.baselines.last)
-        .flatten()
-        .or_else(|| last_baseline_of_content(tree, key, fc))
-        .or(first);
-    output.baselines.first = first;
-    output.baselines.last = last;
-    let state = tree.state_mut(key);
+    let first = output.baselines.first;
+    let state = tree.state_mut(from_node_id(node));
     state.first_baseline = first;
-    state.last_baseline = last;
-}
-
-/// The inner formatting context of a box, an atomic inline's being the one its display names.
-fn inner_context<C: MeasureContent>(
-    tree: &LayoutTree<'_, C>,
-    key: BoxKey,
-    fc: FormattingContext,
-) -> FormattingContext {
-    if fc != FormattingContext::Atomic {
-        return fc;
-    }
-    crate::style::convert::display::atomic_inner(tree.structure().node(key).style.get_box().display)
-}
-
-fn first_baseline_of_content<C: MeasureContent>(
-    tree: &LayoutTree<'_, C>,
-    key: BoxKey,
-    fc: FormattingContext,
-) -> Option<f32> {
-    if inner_context(tree, key, fc) != FormattingContext::Block {
-        return None;
-    }
-    let structure = tree.structure();
-    structure.node(key).children.iter().find_map(|&child| {
-        if !is_in_flow(tree, child) {
-            return None;
-        }
-        let state = tree.state(child)?;
-        let baseline = state.first_baseline?;
-        Some(baseline + state.unrounded.location.y)
-    })
-}
-
-/// Whether a box takes part in its parent's flow, as opposed to floating or being positioned out.
-fn is_in_flow<C: MeasureContent>(tree: &LayoutTree<'_, C>, child: BoxKey) -> bool {
-    let style = tree.engine_style(child);
-    style.float == cephal::style::Float::None && style.position != cephal::style::Position::Absolute
-}
-
-fn last_baseline_of_content<C: MeasureContent>(
-    tree: &LayoutTree<'_, C>,
-    key: BoxKey,
-    fc: FormattingContext,
-) -> Option<f32> {
-    if fc == FormattingContext::Inline {
-        // A box that holds lines has a last baseline of its own, and it is not the same line as
-        // its first whenever the content wrapped.
-        let state = tree.state(key)?;
-        let inset = state.unrounded.border.top + state.unrounded.padding.top;
-        return tree
-            .inline_resolution_of(key)
-            .and_then(crate::inline::resolved::InlineResolution::last_baseline)
-            .map(|baseline| baseline + inset);
-    }
-    if !inner_context(tree, key, fc).is_container() {
-        return None;
-    }
-    let structure = tree.structure();
-    structure
-        .node(key)
-        .children
-        .iter()
-        .rev()
-        .find_map(|&child| {
-            if !is_in_flow(tree, child) {
-                return None;
-            }
-            let state = tree.state(child)?;
-            let baseline = state.last_baseline?;
-            Some(baseline + state.unrounded.location.y)
-        })
+    state.last_baseline = output.baselines.last.or(first);
 }

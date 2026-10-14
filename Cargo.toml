@@ -30,12 +30,10 @@ app_units = "0.7.8"
 euclid = "0.22.14"
 
 # --- layout: named only by zgui-layout ----------------------------------------------------
-# A retained, incremental engine written against a host-owned tree, vendored by path so that a
-# crate depending on zgui by path compiles zgui-layout against the patched copy (see
-# vendor/README.md for the changes). `parallel` is off because the workspace drives its own layout
-# pool through the engine's batching seam; `block`, `flex` and `grid` are the three algorithms the
-# box tree dispatches to.
-cephal = { path = "vendor/cephal", default-features = false, features = [
+# A retained, incremental engine written against a host-owned tree. `block`, `flex` and `grid` are
+# the three algorithms the box tree dispatches to; the workspace drives its own layout pool through
+# the engine's batching seam.
+cephal = { version = "0.1.0", default-features = false, features = [
     "block",
     "flex",
     "grid",

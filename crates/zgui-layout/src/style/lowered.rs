@@ -8,9 +8,7 @@
 //! absolute for overflow alone.
 
 use zgui_css::ComputedStyle;
-use zgui_css::values::size::{
-    BoxSizingValue, MaxSizeValue, PositionValue, SizeValue, VisibilityValue,
-};
+use zgui_css::values::size::{BoxSizingValue, MaxSizeValue, SizeValue, VisibilityValue};
 
 use crate::style::calc::InternCalc;
 use crate::style::convert::aspect;
@@ -77,8 +75,6 @@ pub(crate) struct LayoutStyle {
     aspect_auto: bool,
     /// Which `min-*`/`max-*` slots substitute a measurement at read time.
     pub(crate) keywords: Keywords,
-    /// Whether the box is `position: fixed`, told apart from absolute for overflow only.
-    pub(crate) fixed: bool,
     /// Whether `visibility: collapse` removes this box when its parent is a flex container.
     pub(crate) collapses_as_flex_item: bool,
 }
@@ -116,7 +112,6 @@ impl LayoutStyle {
             aspect_explicit,
             aspect_auto,
             keywords,
-            fixed: box_.position == PositionValue::Fixed,
             collapses_as_flex_item: style.get_inherited_box().visibility
                 == VisibilityValue::Collapse
                 && box_.display.outside() != zgui_css::values::size::DisplayOutside::None,

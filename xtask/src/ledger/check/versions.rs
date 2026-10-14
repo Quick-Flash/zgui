@@ -36,8 +36,8 @@ const DUPLICATE_LIMITS: [(&str, usize); 4] = [
 
 /// The exact feature set the incremental layout engine is built with.
 ///
-/// The three algorithms the box tree dispatches to, and nothing else: `parallel` would pull in a
-/// second thread pool beside the workspace's own, and `stats` would count on every build.
+/// The three algorithms the box tree dispatches to, and nothing else: `stats` would count on every
+/// build, and `serde` and `taffy-compat` serve no crate here.
 const CEPHAL_FEATURES: [&str; 3] = ["block", "flex", "grid"];
 
 /// Features of the reactive graph that must be on, and off.

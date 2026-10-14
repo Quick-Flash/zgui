@@ -81,7 +81,8 @@ pub(crate) fn template(
             PositionValue::Static | PositionValue::Relative | PositionValue::Sticky => {
                 Position::Relative
             }
-            PositionValue::Absolute | PositionValue::Fixed => Position::Absolute,
+            PositionValue::Absolute => Position::Absolute,
+            PositionValue::Fixed => Position::Fixed,
         },
         overflow: Point {
             x: overflow::overflow(box_.overflow_x),
@@ -111,7 +112,6 @@ pub(crate) fn template(
         },
         item_is_table: false,
         item_is_replaced: false,
-        item_is_fixed: false,
         scrollbar_width: device.scrollbar_width,
         aspect_ratio: None,
         size: Size {
@@ -251,7 +251,6 @@ pub(crate) fn engine_style(lowered: &LayoutStyle, variant: &Variant) -> Style {
     style.display = variant.display;
     style.item_is_table = variant.item_is_table;
     style.item_is_replaced = variant.item_is_replaced;
-    style.item_is_fixed = lowered.fixed;
     style.aspect_ratio = lowered.aspect_ratio(variant.natural_ratio);
     // An axis layout has decided reserves a gutter is `scroll` to the engine whatever the style
     // says, because reserving the space is what that value means to it.

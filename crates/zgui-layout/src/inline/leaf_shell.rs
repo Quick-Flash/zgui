@@ -9,7 +9,7 @@
 //! are carried out in the answer.
 
 use cephal::compute::block::BlockContext;
-use cephal::style::{BoxSizing, Overflow, Position};
+use cephal::style::{BoxSizing, Overflow};
 use cephal::tree::{
     Baselines, CollapsibleMarginSet, LayoutInput, LayoutOutput, NodeId, RunMode, SizingMode,
 };
@@ -107,7 +107,7 @@ pub(crate) fn compute<C: MeasureContent>(
         let cannot_collapse_through = !style.is_block()
             || overflow.x.is_scroll_container()
             || overflow.y.is_scroll_container()
-            || style.position == Position::Absolute
+            || style.position.is_out_of_flow()
             || padding.top > 0.0
             || padding.bottom > 0.0
             || border.top > 0.0
