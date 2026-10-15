@@ -1016,6 +1016,8 @@ mod tests {
 
     #[test]
     fn a_series_payload_is_built_once_per_data() {
+        // Its build moves the counters another test reads.
+        let _turn = zgui_profile::counter::exclusive();
         let mut cache = MarkPayloads::default();
         cache.begin_frame();
         let data = data();
@@ -1083,6 +1085,8 @@ mod tests {
 
     #[test]
     fn a_far_pan_rebases_the_payload() {
+        // Its build moves the counters another test reads.
+        let _turn = zgui_profile::counter::exclusive();
         let mut cache = MarkPayloads::default();
         cache.begin_frame();
         let data = data();
@@ -1347,6 +1351,8 @@ mod tests {
 
     #[test]
     fn a_series_entry_dies_with_its_data() {
+        // Its build moves the counters another test reads.
+        let _turn = zgui_profile::counter::exclusive();
         let mut cache = MarkPayloads::default();
         cache.begin_frame();
         let data = data();
