@@ -69,6 +69,20 @@ To build the console example:
 cargo build -p zgui-examples --features drm --example tty
 ```
 
+## Releasing
+
+All published crates are released together at the version in the root `Cargo.toml`.
+
+1. Set the new version in `[workspace.package]` and in the internal dependency requirements, and
+   commit it on `main`.
+2. Run `cargo xtask release`. It checks the manifests, builds every published crate from its
+   package, and compares the public API with the previous release.
+3. Push a tag such as `v0.2.0` for that commit. The release workflow checks that the tag is on
+   `main` and names the workspace version, runs CI, and creates the GitHub release with notes
+   that list the pull requests merged since the previous release.
+4. When the workflow is green, publish from a clean checkout of the tag with
+   `cargo publish --workspace`.
+
 ## Adapted code
 
 You can adapt code from projects with a compatible license. Start the file with a header that
