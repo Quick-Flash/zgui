@@ -508,3 +508,53 @@ fn a_tooltip_with_no_room_above_flips_below_its_trigger_and_keeps_the_gap() {
          tooltip {panel:?}"
     );
 }
+
+// ---- a menubar's menu --------------------------------------------------------------------------
+
+/// What the menubar's menu says, all of it, which is how its panel is found.
+const MENU: &str = "New windowClose every tab";
+
+#[test]
+fn a_menubar_menu_hangs_from_the_start_of_its_trigger() {
+    let mut stage = opened(1.0, || {
+        view! {
+            ThemeProvider {
+                column(class = "page") {
+                    row(class = "probe") {
+                        Menubar {
+                            MenubarMenu(value = "file") {
+                                MenubarTrigger {"File"}
+                                MenubarContent {
+                                    MenubarItem {"New window"}
+                                    MenubarItem {"Close every tab"}
+                                }
+                            }
+                            MenubarMenu(value = "edit") {
+                                MenubarTrigger {"Edit"}
+                                MenubarContent {MenubarItem {"Undo"}}
+                            }
+                        }
+                    }
+                    text {"under it"}
+                }
+            }
+        }
+    });
+    let trigger = box_saying(&stage, "File");
+
+    stage.click_saying("File");
+    stage.settle();
+
+    let menu = panel_saying(&stage, MENU);
+    assert!(
+        menu.size.width.0 > trigger.size.width.0 + 2.0 * SLACK,
+        "the menu is no wider than its trigger, so the fixture cannot tell start from centre; \
+         trigger {trigger:?}, menu {menu:?}"
+    );
+    let across = menu.origin.x.0 - trigger.origin.x.0;
+    assert!(
+        across.abs() <= SLACK,
+        "the menu's left edge is {across} device pixels from its trigger's; trigger {trigger:?}, \
+         menu {menu:?}"
+    );
+}
