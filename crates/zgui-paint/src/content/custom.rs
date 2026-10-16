@@ -421,6 +421,7 @@ mod tests {
             has_color,
             brush: zgui_scene::PaintSlot(3),
             glyphs: &GLYPHS,
+            text_start: 0,
         }
     }
 

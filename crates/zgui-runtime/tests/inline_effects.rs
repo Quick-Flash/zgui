@@ -15,7 +15,9 @@ const CSS: &str = ":root { display: block; width: 400px; height: 300px }
                    .para { display: block }
                    .chip { padding: 0 4px; background-color: rgb(255, 0, 0) }
                    .chip.on { background-color: rgb(0, 0, 255) }
-                   .under { text-decoration: underline rgb(0, 255, 0) }";
+                   .under { text-decoration: underline rgb(0, 255, 0) }
+                   .shadowed { text-shadow: 2px 2px rgb(255, 0, 255) }
+                   .plain { text-shadow: none }";
 
 /// A solid quad of the frame: its painting order, its colour as 8-bit sRGB and its rectangle.
 fn quads(scene: &zgui_scene::Scene) -> Vec<(u32, [u8; 3], [f32; 4])> {
@@ -181,6 +183,70 @@ fn a_decorated_chip_draws_its_line_across_its_own_text() {
         centre > glyph_bottom && centre < line.origin.y.0 + line.size.height.0,
         "under the baseline the glyphs sit on and inside the line: centre {centre}, glyphs end \
          at {glyph_bottom}, line {line:?}"
+    );
+    harness.shut_down();
+}
+
+/// The x of every glyph drawn in a colour, relative to the line box.
+fn glyphs_in(
+    scene: &zgui_scene::Scene,
+    line: zgui_geom::Rect<zgui_geom::DevicePx, zgui_geom::Device>,
+    color: [f32; 4],
+) -> Vec<f32> {
+    let mut xs: Vec<f32> = scene
+        .primitives
+        .mono_sprites
+        .iter()
+        .filter(|sprite| sprite.color == color)
+        .map(|sprite| sprite.bounds[0] - line.origin.x.0)
+        .collect();
+    xs.sort_by(f32::total_cmp);
+    xs
+}
+
+#[test]
+fn a_text_shadow_follows_only_the_run_that_declared_it() {
+    let on = RwSignal::new(false);
+    let mut harness = support::app_with_text(CSS, chip_view(on, "chip shadowed"));
+    harness.settle(8);
+    let window = &harness.app().windows()[0];
+    let line = support::first_line_box(window);
+    let shadows = glyphs_in(window.scene(), line, [1.0, 0.0, 1.0, 1.0]);
+    // The chip's four glyphs start after `aa ` and its padding, moved two pixels.
+    assert_eq!(
+        shadows,
+        [30.0, 38.0, 46.0, 54.0],
+        "a shadow under each of the chip's glyphs and under nothing else"
+    );
+    harness.shut_down();
+}
+
+#[test]
+fn a_run_that_declares_no_text_shadow_drops_the_inherited_one() {
+    let on = RwSignal::new(false);
+    let mut harness = support::app_with_text(CSS, move |cx: &mut BuildCx<'_>| {
+        Box::new(
+            zgui_elements::r#box()
+                .class("para shadowed")
+                .child(zgui_elements::text().child(|| "aa "))
+                .child(
+                    zgui_elements::text()
+                        .class("chip plain")
+                        .class_toggle(ClassName::new("on"), move || on.get())
+                        .child(|| "bbbb"),
+                )
+                .into_view()
+                .build(cx),
+        ) as Box<dyn zgui_view::Anchor>
+    });
+    harness.settle(8);
+    let window = &harness.app().windows()[0];
+    let line = support::first_line_box(window);
+    let shadows = glyphs_in(window.scene(), line, [1.0, 0.0, 1.0, 1.0]);
+    assert_eq!(
+        shadows,
+        [2.0, 10.0],
+        "the paragraph's two letters are shadowed and the chip's are not"
     );
     harness.shut_down();
 }

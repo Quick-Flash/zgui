@@ -83,6 +83,7 @@ fn run() -> ShapedRun<'static> {
         has_color: false,
         brush: PaintSlot(0),
         glyphs: &GLYPHS,
+        text_start: 0,
     }
 }
 

@@ -95,6 +95,7 @@ impl CustomElement for Label {
             has_color: false,
             brush: PaintSlot(0),
             glyphs: &GLYPHS,
+            text_start: 0,
         };
         painter.glyphs(&run, origin(), painter.current_color());
     }

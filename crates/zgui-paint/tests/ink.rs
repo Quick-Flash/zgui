@@ -261,6 +261,7 @@ fn a_text_shadow_is_drawn_as_a_second_pass_over_the_same_glyphs_at_its_own_offse
                 format: GlyphFormat::Mono,
                 paint: zgui_scene::PaintSlot(0),
                 synthetic_bold: 0.0,
+                text_start: 0,
             });
         }
     }

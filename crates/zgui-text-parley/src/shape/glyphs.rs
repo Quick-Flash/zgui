@@ -44,17 +44,22 @@ pub(crate) fn visit_line(
         if glyphs.is_empty() {
             continue;
         }
-        visit(described(fonts, &run, &glyphs));
+        visit(described(fonts, &run, &glyphs, shaped.prefix));
     }
 }
 
 /// One engine run, described the way a rasteriser needs it.
+///
+/// `prefix` is how many bytes of directional control lead the engine's string; the run's text
+/// offset is reported in the caller's string, which does not hold them.
 fn described<'a>(
     fonts: &FontSystem,
     run: &parley::GlyphRun<'_, SlotBrush>,
     glyphs: &'a [ShapedGlyph],
+    prefix: usize,
 ) -> ShapedRun<'a> {
     let text = run.run();
+    let text_start = text.text_range().start.saturating_sub(prefix);
     let face = fonts.face_for(text.font());
     let synthesis = text.synthesis();
     ShapedRun {
@@ -71,5 +76,6 @@ fn described<'a>(
         has_color: fonts.face(face).is_some_and(|record| record.has_color),
         brush: run.style().brush.0,
         glyphs,
+        text_start: u32::try_from(text_start).unwrap_or(u32::MAX),
     }
 }

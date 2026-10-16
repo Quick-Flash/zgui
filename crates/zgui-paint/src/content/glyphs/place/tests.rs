@@ -76,6 +76,7 @@ fn placed(origin: (f32, f32), positions: &[f32]) -> Vec<(PlacedGlyph, SubpixelOf
         has_color: false,
         brush: PaintSlot(0),
         glyphs: &glyphs,
+        text_start: 0,
     };
     let raster = Recording::default();
     let mut cache = GlyphCache::default();

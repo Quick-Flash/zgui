@@ -182,6 +182,7 @@ impl ShapedRun<'_> {
     ///     has_color: false,
     ///     brush: PaintSlot(0),
     ///     glyphs: &[],
+    ///     text_start: 0,
     /// };
     /// assert_eq!(run.raster_path(RunSurface::PLAIN), RasterPath::Vector);
     /// ```

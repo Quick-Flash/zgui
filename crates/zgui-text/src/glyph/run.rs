@@ -65,6 +65,10 @@ pub struct ShapedRun<'a> {
     pub brush: Brush,
     /// The glyphs, in visual order.
     pub glyphs: &'a [ShapedGlyph],
+    /// The byte offset in the generated string where the run's text starts.
+    ///
+    /// It says which nested inline box the run belongs to. No cache key holds it.
+    pub text_start: u32,
 }
 
 impl ShapedRun<'_> {
@@ -87,6 +91,7 @@ impl ShapedRun<'_> {
     ///     has_color: false,
     ///     brush: PaintSlot(0),
     ///     glyphs: &[],
+    ///     text_start: 0,
     /// };
     /// assert_eq!(run.raster_style(true), RasterStyle::Subpixel);
     /// assert_eq!(run.raster_style(false), RasterStyle::Grayscale);
@@ -146,6 +151,7 @@ impl ShapedRun<'_> {
     ///     has_color: false,
     ///     brush: PaintSlot(0),
     ///     glyphs: &[],
+    ///     text_start: 0,
     /// };
     /// let here = run.key_for(ShapedGlyph { glyph: 9, x: 12.25, y: 0.0 }, 0.0, RasterStyle::Grayscale);
     /// let there = run.key_for(ShapedGlyph { glyph: 9, x: 40.25, y: 0.0 }, 0.0, RasterStyle::Grayscale);
@@ -207,6 +213,7 @@ mod tests {
             has_color: false,
             brush: zgui_scene::PaintSlot(0),
             glyphs: &[],
+            text_start: 0,
         }
     }
 

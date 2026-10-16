@@ -74,6 +74,7 @@ impl ShapedRunOwned {
     ///     has_color: false,
     ///     brush: PaintSlot(0),
     ///     glyphs: &[glyph],
+    ///     text_start: 0,
     /// };
     /// assert_eq!(
     ///     owned.as_run(PaintSlot(0)).key_for(glyph, 0.0, RasterStyle::Grayscale),
@@ -94,6 +95,7 @@ impl ShapedRunOwned {
             has_color: self.has_color,
             brush,
             glyphs: &self.glyphs,
+            text_start: 0,
         }
     }
 }
@@ -168,6 +170,7 @@ mod tests {
             has_color: owned.has_color,
             brush: PaintSlot(0),
             glyphs: &owned.glyphs,
+            text_start: 0,
         };
         for glyph in &owned.glyphs {
             assert_eq!(
@@ -194,6 +197,7 @@ mod tests {
             has_color: true,
             brush: PaintSlot(2),
             glyphs: &glyphs,
+            text_start: 0,
         };
         let owned = ShapedRunOwned::from(run);
         assert_eq!(owned.face, FaceId(1));

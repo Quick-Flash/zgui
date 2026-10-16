@@ -137,6 +137,7 @@ impl ParagraphShaper for MonoShaper {
             has_color: false,
             brush: zgui_scene::PaintSlot(0),
             glyphs: &glyphs,
+            text_start: 0,
         });
     }
 
