@@ -108,6 +108,7 @@ pub fn Textarea(
     view! {
         editor(
             node_ref = element,
+            class = "zui-textarea",
             class = TextareaStyle::CLASS,
             tabindex = {Focus::Sequential},
             on:input = move |ev| on_input(ev),

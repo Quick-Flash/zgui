@@ -123,6 +123,7 @@ pub fn Input(
     view! {
         field(
             node_ref = element,
+            class = "zui-input",
             class = InputStyle::CLASS,
             tabindex = {Focus::Sequential},
             on:input = move |ev| on_input(ev),
