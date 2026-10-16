@@ -18,7 +18,8 @@ const CSS: &str = ":root { display: block; width: 400px; height: 300px }
                    .under { text-decoration: underline rgb(0, 255, 0) }
                    .shadowed { text-shadow: 2px 2px rgb(255, 0, 255) }
                    .plain { text-shadow: none }
-                   .sup { vertical-align: super }";
+                   .sup { vertical-align: super }
+                   .lit.on { background-color: rgb(0, 0, 255) }";
 
 /// A solid quad of the frame: its painting order, its colour as 8-bit sRGB and its rectangle.
 fn quads(scene: &zgui_scene::Scene) -> Vec<(u32, [u8; 3], [f32; 4])> {
@@ -283,5 +284,28 @@ fn a_superscript_draws_its_glyphs_raised_by_its_shift() {
         raised.iter().all(|top| *top == plain - shift),
         "the superscript's glyphs sit {shift} px above the paragraph's: {tops:?}"
     );
+    harness.shut_down();
+}
+
+#[test]
+fn a_run_that_starts_painting_is_painted_and_one_that_stops_is_cleared() {
+    // The line holding a plain run paints no part of it, so the first background is a change of
+    // what the line paints and not only of a colour.
+    let on = RwSignal::new(false);
+    let mut harness = support::app_with_text(CSS, chip_view(on, "lit"));
+    harness.settle(8);
+    let blue = |harness: &zgui_platform_headless::Harness<zgui_runtime::Runtime>| {
+        quads(harness.app().windows()[0].scene())
+            .into_iter()
+            .filter(|(_, rgb, _)| *rgb == [0, 0, 255])
+            .count()
+    };
+    assert_eq!(blue(&harness), 0);
+    on.set(true);
+    harness.settle(8);
+    assert_eq!(blue(&harness), 1, "the run's new background is painted");
+    on.set(false);
+    harness.settle(8);
+    assert_eq!(blue(&harness), 0, "and cleared again");
     harness.shut_down();
 }
