@@ -515,3 +515,48 @@ fn at_a_fractional_scale_the_track_begins_exactly_where_the_content_ends() {
         "the thumb is drawn in the track"
     );
 }
+
+/// The scrolling page with twenty pixels of padding on its left and right.
+const PADDED_CSS: &str = "
+root { display: block; width: 100%; height: 100%; padding: 0 20px; overflow-x: hidden;
+       overflow-y: scroll }
+.filler { display: block; width: 100%; height: 600px; background-color: #202020 }
+";
+
+#[test]
+fn a_padded_scroller_draws_its_bar_against_its_edge_and_its_padding_hits_no_bar() {
+    let mut harness = page(PADDED_CSS, false);
+    harness.settle(8);
+
+    // The bar is outside the padding, against the edge of the window.
+    let track = bar(&harness, ScrollbarPart::Track);
+    assert_eq!(track, [400.0 - GUTTER, 0.0, GUTTER, 300.0]);
+    let thumb = bar(&harness, ScrollbarPart::Thumb);
+    assert_eq!(thumb, [400.0 - GUTTER, 0.0, GUTTER, 150.0]);
+
+    // Where the bar used to be: between the content and the right padding. A press and a move
+    // there are on the page and drag nothing.
+    let old_strip = 400.0 - 20.0 - GUTTER / 2.0;
+    pointer(&mut harness, PointerAction::Moved, (old_strip, 40.0));
+    pointer(&mut harness, PointerAction::Pressed, (old_strip, 40.0));
+    pointer(&mut harness, PointerAction::Moved, (old_strip, 70.0));
+    pointer(&mut harness, PointerAction::Released, (old_strip, 70.0));
+    assert_eq!(offset(&harness), 0.0, "the padding is not a bar");
+
+    // The thumb where it is now drags as before: thirty of thumb is sixty of content.
+    pointer(&mut harness, PointerAction::Moved, (392.0, 40.0));
+    pointer(&mut harness, PointerAction::Pressed, (392.0, 40.0));
+    assert_eq!(offset(&harness), 0.0);
+    pointer(&mut harness, PointerAction::Moved, (392.0, 70.0));
+    assert!(
+        (offset(&harness) - 60.0).abs() < 0.51,
+        "the offset is {}",
+        offset(&harness)
+    );
+    pointer(&mut harness, PointerAction::Released, (392.0, 70.0));
+
+    // And a press on the track below the thumb pages by the visible height.
+    pointer(&mut harness, PointerAction::Moved, (392.0, 290.0));
+    pointer(&mut harness, PointerAction::Pressed, (392.0, 290.0));
+    assert_eq!(offset(&harness), 300.0);
+}

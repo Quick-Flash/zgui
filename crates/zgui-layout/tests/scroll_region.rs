@@ -162,3 +162,61 @@ fn unlocking_gives_the_gutter_back() {
     lay_out(&mut store, &mut content, 400.0, 300.0);
     assert_eq!(fragment_rects(&store), scrolling_width);
 }
+
+#[test]
+fn a_padded_bordered_scroller_puts_its_bar_against_the_border() {
+    let rows: Vec<Element> = (0..30)
+        .map(|_| Element::new("row").text("alpha bravo delta"))
+        .collect();
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("column").children(rows)]),
+        "root { display: block }
+         column { display: block; height: 200px; overflow-y: auto; padding: 0 16px;
+                  border: 1px solid red }
+         row { display: block }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 400.0, 300.0);
+
+    let column = fixture
+        .document
+        .store()
+        .core(fixture.root)
+        .first_child()
+        .expect("the scroller");
+    let list = store.boxes_of(fixture.document.store().key_of(column))[0];
+    let frags = store.fragments_of_box(list).to_vec();
+    let fragment = |kind| {
+        frags
+            .iter()
+            .filter_map(|frag| store.fragment(*frag))
+            .find(|fragment| fragment.kind == kind)
+            .cloned()
+            .expect("the fragment")
+    };
+    let own = fragment(zgui_layout::FragmentKind::Box);
+    let part = |part| {
+        fragment(zgui_layout::FragmentKind::Scrollbar {
+            axis: zgui_layout::Axis::Vertical,
+            part,
+        })
+        .border_box
+    };
+    let track = part(zgui_layout::fragment::ScrollbarPart::Track);
+    let thumb = part(zgui_layout::fragment::ScrollbarPart::Thumb);
+
+    assert_eq!(
+        track.right().0,
+        own.border_box.right().0 - 1.0,
+        "the track touches the border"
+    );
+    assert_eq!(track.top(), own.padding_box.top());
+    assert_eq!(track.bottom(), own.padding_box.bottom());
+    assert!(
+        (track.left().0 - (own.content_box.right().0 + 16.0)).abs() < 1e-3,
+        "the right padding stays between the content and the bar"
+    );
+    assert_eq!(thumb.left(), track.left());
+    assert_eq!(thumb.top(), track.top());
+}

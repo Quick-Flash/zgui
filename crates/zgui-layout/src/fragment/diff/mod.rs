@@ -1059,8 +1059,8 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                 content_hash: 0,
             };
         }
-        // A bar sits in the gutter, which is inside the box's padding box and outside its content
-        // box, so it is placed from the box's own rectangles rather than from anything the content
+        // A bar sits in the gutter, which is inside the box's padding box against its border and
+        // outside its padding and content box, so it is placed from the box's own rectangles rather than from anything the content
         // produced — and it is drawn under the chain that clips the *scroller*, never under the one
         // the scroller imposes on what it scrolls, or it would disappear along with the content.
         if let FragmentKind::Scrollbar { axis, part } = kind {
@@ -1207,6 +1207,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             |element| self.tables.scroll.of(element),
         );
         crate::scroll_region::bar::Scrollport {
+            padding_box: placed.padding_box,
             inner: placed.padding_box.inset(placed.padding),
             content_box: placed.content_box,
             content,
