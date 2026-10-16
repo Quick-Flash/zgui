@@ -1414,6 +1414,53 @@ fn a_select_shows_its_value_on_a_trigger_whose_list_has_never_been_opened() {
 }
 
 #[test]
+fn a_native_select_with_a_placeholder_shows_it_until_something_is_chosen() {
+    let harness = Harness::open();
+    let reason = harness
+        .window
+        .scope
+        .with(|| RwSignal::new_local(String::new()));
+    harness.mount(move || {
+        view! {
+            column {
+                NativeSelect(value = reason, placeholder = "Choose…", a11y:label = "Reason") {
+                    NativeSelectOption(value = "a") {"A"}
+                    NativeSelectOption(value = "b") {"B"}
+                }
+                NativeSelect(a11y:label = "Plain") {
+                    NativeSelectOption(value = "c") {"C"}
+                    NativeSelectOption(value = "d") {"D"}
+                }
+            }
+        }
+    });
+    settle(&harness);
+    let tree = harness.window.dom.tree();
+    let values = every(&harness, "zui-native-select__value");
+    assert_eq!(tree.text_content(values[0]), "Choose…");
+    assert!(
+        harness
+            .state(values[0])
+            .contains(UiState::PLACEHOLDER_SHOWN)
+    );
+    assert_eq!(
+        tree.text_content(values[1]),
+        "C",
+        "with no placeholder, the first option's text shows"
+    );
+
+    harness.window.scope.with(|| reason.set("b".to_owned()));
+    settle(&harness);
+    let tree = harness.window.dom.tree();
+    assert_eq!(tree.text_content(values[0]), "B");
+    assert!(
+        !harness
+            .state(values[0])
+            .contains(UiState::PLACEHOLDER_SHOWN)
+    );
+}
+
+#[test]
 fn a_select_jumps_to_the_ends_and_leaves_without_choosing_on_escape() {
     let (harness, value, trigger, options) = open_select();
 

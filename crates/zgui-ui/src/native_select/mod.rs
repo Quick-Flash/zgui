@@ -178,7 +178,8 @@ pub fn NativeSelect(
     install_stylesheet(SHEET, NativeSelectStyle::CSS);
     let surface = OverlayState::uncontrolled(false, None);
     let listbox = Listbox::new(surface, value, default_value, on_change).provide();
-    let first = FirstShown::new().provide();
+    // A placeholder takes the place of the first option's text, so with one no option offers it.
+    let first = placeholder.is_none().then(|| FirstShown::new().provide());
     // The overlay's own handle rather than a fresh one, because the list is anchored to whatever
     // that handle binds — a caller's ref is honoured the same way a date picker honours one.
     let element = node_ref.unwrap_or_else(|| surface.trigger());
@@ -187,13 +188,15 @@ pub fn NativeSelect(
     let children = StoredValue::new_local(children);
 
     let hint = placeholder.unwrap_or_default();
-    let empty = move || listbox.chosen_text().is_none() && first.shown().is_none();
+    let empty = move || {
+        listbox.chosen_text().is_none() && first.is_none_or(|first| first.shown().is_none())
+    };
     let shown = {
         let hint = hint.clone();
         move || {
             listbox
                 .chosen_text()
-                .or_else(|| first.shown())
+                .or_else(|| first.and_then(|first| first.shown()))
                 .unwrap_or_else(|| hint.clone())
         }
     };
