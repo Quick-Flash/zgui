@@ -1104,7 +1104,16 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                 self.tables.device.scale,
             )
         });
-        let content_hash = resolved.map_or(0, crate::inline::ellipsis::line_hash);
+        let mut content_hash = resolved.map_or(0, crate::inline::ellipsis::line_hash);
+        let mut local_ink = local_ink;
+        let mut flags = FragmentFlags::EMPTY;
+        if let Some(line_box) = resolved
+            && let Some(effects) = self.inline_effects(key, placed, line, rect, line_box)
+        {
+            local_ink = local_ink.union(effects.ink);
+            content_hash ^= effects.hash;
+            flags = FragmentFlags::INLINE_EFFECTS;
+        }
         Geometry {
             border_box: rect,
             padding_box: rect,
@@ -1114,7 +1123,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             ink: on_device(placed, local_ink),
             local_ink,
             // A line is drawn inside its own box's clip and transform, and establishes neither.
-            flags: FragmentFlags::EMPTY,
+            flags,
             clip: placed.descent.clip,
             // A line is drawn under the clip its own box imposes, which that box measured in its
             // own space — the space its own transform maps onto the device.
@@ -1126,6 +1135,60 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             reads_outside: false,
             content_hash,
         }
+    }
+
+    /// What the nested inline boxes on one line paint, or nothing when none of them paints.
+    ///
+    /// Asked only of a context that holds nested inline boxes, so a paragraph of plain text pays
+    /// one empty-slice test per line.
+    fn inline_effects(
+        &self,
+        key: BoxKey,
+        placed: &Placed,
+        line: usize,
+        rect: Rect<DevicePx, Device>,
+        line_box: &crate::inline::lines::LineBox,
+    ) -> Option<InlineEffects> {
+        let resolution = self.store.inline_resolution(key)?;
+        let slices = resolution.slices_on(line);
+        if slices.is_empty() {
+            return None;
+        }
+        let root = &self.store.node(key).style;
+        let scale = self.tables.device.scale;
+        let mut held: Option<InlineEffects> = None;
+        for slice in slices {
+            let style = &self.store.node(slice.box_).style;
+            if !crate::fragment::ink::inline_effects(style, root, slice) {
+                continue;
+            }
+            let part = crate::inline::slices::device_rect(placed.content_box, slice);
+            let ink = crate::fragment::ink::of_inline(
+                style,
+                part,
+                rect,
+                line_box.extents,
+                line_box.ink,
+                scale,
+            );
+            let hash = zgui_scene::ContentHash::new()
+                .u32(slice.box_.index())
+                .f32(part.origin.x.0 - rect.origin.x.0)
+                .f32(part.origin.y.0 - rect.origin.y.0)
+                .f32(part.size.width.0)
+                .f32(part.size.height.0)
+                .u32(u32::from(slice.first) | u32::from(slice.last) << 1)
+                .f32(slice.shift)
+                .finish();
+            held = Some(match held {
+                Some(effects) => InlineEffects {
+                    ink: effects.ink.union(ink),
+                    hash: effects.hash.rotate_left(5) ^ hash,
+                },
+                None => InlineEffects { ink, hash },
+            });
+        }
+        held
     }
 
     /// The scrollport one box's bars are placed in.
@@ -1214,7 +1277,18 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         }
         self.store.set_read_extent(frag, next.reads_outside);
 
-        let own = owed.own;
+        // A line that paints its nested inline boxes repaints when one of them does: those boxes
+        // are below the line's own box, so their marks are in its subtree.
+        let own = if matches!(kind, FragmentKind::Line { .. })
+            && (next.flags.contains(FragmentFlags::INLINE_EFFECTS)
+                || previous
+                    .as_ref()
+                    .is_some_and(|previous| previous.flags.contains(FragmentFlags::INLINE_EFFECTS)))
+        {
+            owed.own | (owed.subtree & REPAINTS_IN_PLACE)
+        } else {
+            owed.own
+        };
         // What this fragment's chain admits *now*, which is the region its next ink can be drawn
         // in. Where it *was* is deliberately not cut to anything: the chain it was drawn under
         // belongs to a frame that is gone, and the node it named holds where its clipping box has
@@ -1446,6 +1520,14 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             };
         }
     }
+}
+
+/// What the nested inline boxes on one line paint.
+struct InlineEffects {
+    /// The union of what they paint, in the line's own space.
+    ink: Rect<DevicePx, Device>,
+    /// A fingerprint of where their parts are, relative to the line box.
+    hash: u64,
 }
 
 /// Whether a piece is a box whose own painting is nothing.

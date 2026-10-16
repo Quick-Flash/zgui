@@ -11,8 +11,8 @@
 
 use core::ops::Range;
 
-use cephal::Rect;
 use zgui_dom::side::BoxKey;
+use zgui_geom::Edges;
 use zgui_text::BrokenParagraph;
 
 use crate::inline::boxes::Boxes;
@@ -42,9 +42,9 @@ pub struct InlineSlice {
     /// The border box's height.
     pub height: f32,
     /// The border widths of this part. A side the box is broken on is zero.
-    pub border: Rect<f32>,
+    pub border: Edges<f32>,
     /// The padding of this part. A side the box is broken on is zero.
-    pub padding: Rect<f32>,
+    pub padding: Edges<f32>,
     /// Whether this part holds the box's start edge.
     pub first: bool,
     /// Whether this part holds the box's end edge.
@@ -206,13 +206,13 @@ pub(crate) fn compute<C: MeasureContent>(
                     continue;
                 }
             }
-            let sliced_border = Rect {
+            let sliced_border = Edges {
                 left: if first { border.left } else { 0.0 },
                 right: if last { border.right } else { 0.0 },
                 top: border.top,
                 bottom: border.bottom,
             };
-            let sliced_padding = Rect {
+            let sliced_padding = Edges {
                 left: if first { padding.left } else { 0.0 },
                 right: if last { padding.right } else { 0.0 },
                 top: padding.top,

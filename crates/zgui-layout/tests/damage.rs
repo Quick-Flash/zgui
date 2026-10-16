@@ -381,3 +381,64 @@ fn a_box_that_only_grew_owes_the_accessibility_tree_its_rectangle_alone() {
         dirty.marked
     );
 }
+
+/// A paragraph of `aa ` and a span holding `bbbb`, with the span's element.
+fn spanned(span: &str) -> (LayoutStore, Fixture, support::Frame, BoxKey) {
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![
+            Element::new("para")
+                .text("aa ")
+                .children(vec![Element::new("span").text("bbbb")]),
+        ]),
+        &format!(
+            "root {{ display: block; width: 200px }}
+             para {{ display: block }}
+             span {{ display: inline; {span} }}"
+        ),
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    let frame = lay_out(&mut store, &mut content, 200.0, 200.0);
+    // The box holding the lines, which may be an anonymous one below the paragraph.
+    let mut stack = vec![store.root().expect("a root")];
+    let mut lines = None;
+    while let Some(key) = stack.pop() {
+        if store.inline_resolution(key).is_some() {
+            lines = Some(key);
+            break;
+        }
+        stack.extend(store.node(key).children.iter().copied());
+    }
+    let lines = lines.expect("a context");
+    (store, fixture, frame, lines)
+}
+
+/// The nested inline box inside a context.
+fn span_of(store: &LayoutStore, context: BoxKey) -> BoxKey {
+    *store
+        .node(context)
+        .children
+        .iter()
+        .find(|child| store.node(**child).text.is_none())
+        .expect("a span")
+}
+
+#[test]
+fn a_repaint_of_a_painted_span_damages_the_line_that_paints_it() {
+    // The span's background is painted by its paragraph's line, and the mark is on the span,
+    // below the box that holds the line.
+    let (mut store, _fixture, mut frame, para) = spanned("background-color: #246");
+    let span = span_of(&store, para);
+    let line = store.fragments_of_box(para)[1];
+    let ink = store.fragment(line).expect("live").ink;
+
+    frame.damage = DamageSet::new();
+    let root = store.root().expect("a root");
+    let mut dirty = OnlyThis {
+        node: store.node(span).source,
+        bits: Dirty::REPAINT,
+        marked: Vec::new(),
+    };
+    fragments(&mut frame, &mut store, root, &mut dirty);
+    assert!(covers(&frame.damage, ink), "the line was not repainted");
+}

@@ -164,6 +164,11 @@ impl FragmentFlags {
     /// Decided from the style when the fragment is placed, and read where a change to the box is
     /// weighed for damage — a box that paints nothing owes none for a move of its own.
     pub const PAINTS_NOTHING: Self = Self(1 << 6);
+    /// A line that paints the effects of the nested inline boxes on it: their backgrounds,
+    /// borders, decorations, text shadows or baseline shifts.
+    ///
+    /// Read where damage is weighed: a style change on one of those boxes repaints the line.
+    pub const INLINE_EFFECTS: Self = Self(1 << 7);
 
     /// Whether every flag in `other` is set here.
     pub const fn contains(self, other: Self) -> bool {

@@ -76,6 +76,12 @@ pub struct Emission<'a> {
     /// `background-image` does not inherit, and a line box belongs to an anonymous box generated
     /// below whatever declared it.
     pub text_fill: Option<&'a crate::lower::background::GradientSpec>,
+    /// The parts of nested inline boxes a line paints, in tree order.
+    ///
+    /// Empty for every fragment that is not a line with [`FragmentFlags::INLINE_EFFECTS`].
+    ///
+    /// [`FragmentFlags::INLINE_EFFECTS`]: zgui_layout::fragment::FragmentFlags::INLINE_EFFECTS
+    pub inline: &'a [crate::emit::inline::InlinePaint],
     /// Where glyphs come from.
     pub glyphs: &'a dyn GlyphSource,
     /// Where a run a custom element shaped itself gets its tiles.
@@ -193,10 +199,19 @@ fn content_tracked(
     let pushed = match fragment.kind {
         FragmentKind::Box => 0,
         FragmentKind::Line { paragraph, line } => {
+            // The backgrounds of the nested inline boxes first, under the selection and the
+            // glyphs.
+            let mut pushed = crate::emit::inline::boxes(
+                scene,
+                emission.inline,
+                emission.alpha,
+                emission.shaders,
+                emission.pointer,
+            );
             // The selection under the glyphs, the caret over them. Neither order is a preference:
             // a band drawn over opaque text hides the text it is meant to mark, and a caret drawn
             // under it disappears inside whichever letter it is sitting on.
-            let mut pushed = marks(
+            pushed += marks(
                 scene,
                 emission,
                 fragment.box_,
@@ -377,7 +392,7 @@ fn marks(
 /// This is how a folded group opacity is applied: multiplying it into each primitive's own paint
 /// produces the same pixels as compositing the subtree once, exactly when no two primitives in it
 /// overlap — and that condition is decided over the fragment tree before this is reached.
-fn faded(style: &PaintStyle, alpha: f32) -> PaintStyle {
+pub(crate) fn faded(style: &PaintStyle, alpha: f32) -> PaintStyle {
     if alpha >= 1.0 {
         return style.clone();
     }

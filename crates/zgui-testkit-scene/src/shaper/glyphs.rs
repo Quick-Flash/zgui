@@ -35,9 +35,8 @@ pub fn glyph_id(character: char) -> u16 {
 /// Visits the runs of one line, positioned against the line box's top-left corner.
 ///
 /// A run ends where the brush changes, which is the only thing that varies across a line here: the
-/// fixed face has one size and one shape, so two clusters differ in nothing else. Atomic inline
-/// boxes are not interleaved with the glyphs, because this shaper's own line geometry does not
-/// interleave them either.
+/// fixed face has one size and one shape, so two clusters differ in nothing else. An inline box
+/// moves the pen by its width before the character at its offset, as the line geometry places it.
 pub(crate) fn visit_line(
     shaped: &ShapedParagraph<MonoLayout>,
     line: u16,
@@ -65,6 +64,12 @@ pub(crate) fn visit_line(
             glyphs.clear();
         }
         brush = Some(cluster.brush);
+        pen += shaped
+            .boxes()
+            .iter()
+            .filter(|geometry| geometry.offset == cluster.offset)
+            .map(|geometry| geometry.width.0)
+            .sum::<f32>();
         let character = shaped.text()[cluster.offset..]
             .chars()
             .next()

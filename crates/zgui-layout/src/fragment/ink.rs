@@ -89,6 +89,68 @@ pub fn of_line(
     })
 }
 
+/// Whether a nested inline box paints anything on the line it is on.
+///
+/// `root` is the style of the box that holds the lines, and `slice` is the part of the nested box
+/// on the line. The box paints when it draws a background, a border or a shadow, a decoration line,
+/// a text shadow of its own, or moves its text off the baseline.
+pub fn inline_effects(
+    style: &ComputedStyle,
+    root: &ComputedStyle,
+    slice: &crate::inline::slices::InlineSlice,
+) -> bool {
+    let background = style.get_background();
+    let border = slice.border;
+    slice.shift != 0.0
+        || border.left > 0.0
+        || border.right > 0.0
+        || border.top > 0.0
+        || border.bottom > 0.0
+        || to_color(
+            &background
+                .background_color
+                .resolve_to_absolute(current(style)),
+        )
+        .alpha()
+            != 0.0
+        || background
+            .background_image
+            .0
+            .iter()
+            .any(|image| !matches!(image, ImageValue::None))
+        || !style.get_effects().box_shadow.0.is_empty()
+        || !style.get_text().text_decoration_line.is_empty()
+        || style.get_inherited_text().text_shadow != root.get_inherited_text().text_shadow
+}
+
+/// Everything a nested inline box paints on one line.
+///
+/// `rect` is the part's border box and `line` the line box, both on the device. The box's own
+/// decorations reach as far as its content area, and its text shadows as far as the line's.
+pub fn of_inline(
+    style: &ComputedStyle,
+    rect: Rect<DevicePx, Device>,
+    line: Rect<DevicePx, Device>,
+    extents: crate::inline::strut::Extents,
+    ink: crate::inline::strut::Extents,
+    scale: f32,
+) -> Rect<DevicePx, Device> {
+    let mut reach = of(style, rect, scale);
+    // A decoration band is a few strokes tall about its line, and its lines lie inside the content
+    // area; three device pixels either side cover the band.
+    let band = DevicePx((3.0 * scale).ceil());
+    reach = reach.union(rect.outset(Edges {
+        top: band,
+        right: DevicePx(0.0),
+        bottom: band,
+        left: DevicePx(0.0),
+    }));
+    if !style.get_inherited_text().text_shadow.0.is_empty() {
+        reach = reach.union(of_line(style, line, extents, ink, scale));
+    }
+    reach
+}
+
 /// How far a filter chain spreads what it is applied to.
 ///
 /// The same reach that decides which pixels a chain *reads* also decides how far the result of
