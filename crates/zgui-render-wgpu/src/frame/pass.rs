@@ -116,7 +116,10 @@ impl Recorder<'_> {
                 let Some(to) = self.texture(destination) else {
                     return;
                 };
-                let region = clamp(region, from, to);
+                // Both targets are at one resolution, so the device region names the same texels
+                // in each.
+                debug_assert_eq!(source.scale(), destination.scale());
+                let region = clamp(source.scale().texels(region), from, to);
                 if region.is_empty() {
                     return;
                 }

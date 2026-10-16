@@ -46,6 +46,9 @@ struct Entry {
     format: wgpu::TextureFormat,
     /// Whether it is currently lent out.
     lent: bool,
+    /// Whether this frame lent it, which keeps it resident until the frame is recorded: the plan
+    /// names its targets by slot, and recording reads them after planning ends.
+    touched: bool,
 }
 
 /// Targets for isolated content, grown on demand and reused within a frame.
@@ -59,21 +62,23 @@ struct Entry {
 /// stacking contexts as deep as an author writes them, and a document that exceeds the limit does
 /// not render slightly worse, it renders wrongly. What is limited is memory, and at the limit the
 /// pool degrades to half resolution rather than to no isolation — a blurrier frosted panel is a
-/// visible cost, a panel composited without its group is a wrong picture.
+/// visible cost, a panel composited without its group is a wrong picture. Before it degrades, the
+/// pool frees the targets no lease of this frame has used.
 ///
 /// Isolated content is held in `Rgba16Float`, for headroom under stacked opacity and repeated
 /// blends and for no other reason: every value in it is still premultiplied and gamma-encoded,
 /// exactly as in every other target, and the composite reading it is a plain textured quad that
 /// performs no colour conversion at all. A target lent to capture what is *beneath* something
-/// takes the format of whatever it is capturing from instead, because a copy between two textures
-/// requires them to agree — and copying is both cheaper and more faithful than a pass that would
-/// convert on the way.
+/// takes the format and resolution of whatever it is capturing from instead, because a copy
+/// between two textures requires them to agree — and copying is both cheaper and more faithful
+/// than a pass that would convert on the way. That lease never degrades
+/// ([`GroupPool::acquire_exact`]).
 #[derive(Debug)]
 pub struct GroupPool {
     /// The device-pixel region every target covers.
     region: Size<i32, Device>,
-    /// The targets.
-    entries: Vec<Entry>,
+    /// The targets. A freed target leaves a hole, so that every other slot keeps its index.
+    entries: Vec<Option<Entry>>,
     /// How many bytes of targets may be resident.
     budget: u64,
     /// How many leases were degraded to half resolution because the budget was reached.
@@ -164,34 +169,68 @@ impl GroupPool {
                 }
                 degraded
             })?;
+        self.count(lent);
+        Some(slot)
+    }
+
+    /// Lends a target at exactly `scale`, or nothing when the budget will not take one.
+    ///
+    /// For a target whose texels have to line up with another one, such as the destination of a
+    /// copy: a target at a different resolution holds the copied texels at the wrong place.
+    pub fn acquire_exact(
+        &mut self,
+        gpu: &Gpu,
+        scale: TargetScale,
+        format: wgpu::TextureFormat,
+    ) -> Option<GroupSlot> {
+        let lent = self.lent();
+        let slot = self
+            .reuse(scale, format)
+            .or_else(|| self.allocate(gpu, scale, format))?;
+        self.count(lent);
+        Some(slot)
+    }
+
+    /// Counts a lease taken while `lent` others were out.
+    fn count(&mut self, lent: u32) {
         self.peak = self.peak.max(lent + 1);
         self.leases += 1;
         counter::bump(Counter::GroupTargets);
-        Some(slot)
     }
 
     /// Returns a target to the pool.
     pub fn release(&mut self, slot: GroupSlot) {
-        if let Some(entry) = self.entries.get_mut(slot.index) {
+        if let Some(Some(entry)) = self.entries.get_mut(slot.index) {
             entry.lent = false;
         }
     }
 
     /// Returns every target to the pool, which is what the end of a frame does.
     pub fn release_all(&mut self) {
-        for entry in &mut self.entries {
+        for entry in self.entries.iter_mut().flatten() {
             entry.lent = false;
+            entry.touched = false;
         }
     }
 
     /// A view of a lent target.
     pub fn view(&self, slot: GroupSlot) -> &wgpu::TextureView {
-        &self.entries[slot.index].view
+        &self.entry(slot).view
     }
 
     /// A lent target's texture, for a copy into or out of it.
     pub fn texture(&self, slot: GroupSlot) -> &wgpu::Texture {
-        &self.entries[slot.index].texture
+        &self.entry(slot).texture
+    }
+
+    /// The entry a slot names.
+    ///
+    /// Panics on a hole: the pool frees only targets this frame has not lent, so a slot of this
+    /// frame never names one.
+    fn entry(&self, slot: GroupSlot) -> &Entry {
+        self.entries[slot.index]
+            .as_ref()
+            .expect("a slot of this frame names a resident target")
     }
 
     /// The device-pixel region every target covers.
@@ -216,19 +255,25 @@ impl GroupPool {
     pub fn bytes(&self) -> u64 {
         self.entries
             .iter()
+            .flatten()
             .map(|entry| texture_bytes(&entry.texture))
             .sum()
     }
 
     /// How many targets are lent out right now.
     pub fn lent(&self) -> u32 {
-        self.entries.iter().filter(|entry| entry.lent).count() as u32
+        self.entries
+            .iter()
+            .flatten()
+            .filter(|entry| entry.lent)
+            .count() as u32
     }
 
     /// How many bytes of device memory the targets lent out right now hold.
     pub fn lent_bytes(&self) -> u64 {
         self.entries
             .iter()
+            .flatten()
             .filter(|entry| entry.lent)
             .map(|entry| texture_bytes(&entry.texture))
             .sum()
@@ -244,11 +289,10 @@ impl GroupPool {
     /// Nothing is lost: a target holds one frame's isolated content and is cleared before it is
     /// drawn into, so what this costs is an allocation on the next frame that isolates anything.
     ///
-    /// **All or nothing, and it has to be.** A [`GroupSlot`] is a position in the entry list, so
-    /// dropping some entries and keeping others would silently repoint every lease taken after the
-    /// hole. A pool with anything lent out therefore frees nothing and says so by returning zero,
-    /// which is the state a call from inside a composite would find; the end of a frame returns
-    /// every lease, so a caller enforcing a budget between frames frees the whole pool.
+    /// **All or nothing.** A plan names its targets by slot and recording reads them after
+    /// planning ends, so a pool with anything lent out frees nothing and returns zero, which is
+    /// the state a call from inside a composite would find; the end of a frame returns every
+    /// lease, so a caller enforcing a budget between frames frees the whole pool.
     pub fn release_unused(&mut self) -> u64 {
         if self.lent() > 0 {
             return 0;
@@ -270,11 +314,14 @@ impl GroupPool {
 
     /// Lends a free target already held at `scale`, if there is one.
     fn reuse(&mut self, scale: TargetScale, format: wgpu::TextureFormat) -> Option<GroupSlot> {
-        let index = self
-            .entries
-            .iter()
-            .position(|entry| !entry.lent && entry.scale == scale && entry.format == format)?;
-        self.entries[index].lent = true;
+        let index = self.entries.iter().position(|entry| {
+            entry
+                .as_ref()
+                .is_some_and(|entry| !entry.lent && entry.scale == scale && entry.format == format)
+        })?;
+        let entry = self.entries[index].as_mut()?;
+        entry.lent = true;
+        entry.touched = true;
         Some(GroupSlot {
             index,
             scale,
@@ -283,6 +330,10 @@ impl GroupPool {
     }
 
     /// Allocates a new target at `scale`, unless the budget will not take it.
+    ///
+    /// Frees targets this frame has not lent when that makes room. Those are of another scale or
+    /// format, since [`GroupPool::reuse`] takes a matching one first, and without this they stay
+    /// resident and keep the pool at its budget for every later frame.
     fn allocate(
         &mut self,
         gpu: &Gpu,
@@ -293,7 +344,7 @@ impl GroupPool {
         let cost = u64::from(format.block_copy_size(None).unwrap_or(8))
             * allocated.width.max(1) as u64
             * allocated.height.max(1) as u64;
-        if self.bytes() + cost > self.budget {
+        if self.bytes() + cost > self.budget && !self.evict(cost) {
             return None;
         }
         let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
@@ -311,18 +362,59 @@ impl GroupPool {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        self.entries.push(Entry {
+        let entry = Entry {
             texture,
             view,
             scale,
             format,
             lent: true,
-        });
+            touched: true,
+        };
+        let index = match self.entries.iter().position(Option::is_none) {
+            Some(hole) => {
+                self.entries[hole] = Some(entry);
+                hole
+            }
+            None => {
+                self.entries.push(Some(entry));
+                self.entries.len() - 1
+            }
+        };
         Some(GroupSlot {
-            index: self.entries.len() - 1,
+            index,
             scale,
             format,
         })
+    }
+
+    /// Frees targets this frame has not lent until `cost` more bytes fit in the budget.
+    ///
+    /// Frees nothing and returns `false` when freeing all of them would still not make room.
+    fn evict(&mut self, cost: u64) -> bool {
+        let idle = |entry: &Entry| !entry.lent && !entry.touched;
+        let freeable: u64 = self
+            .entries
+            .iter()
+            .flatten()
+            .filter(|entry| idle(entry))
+            .map(|entry| texture_bytes(&entry.texture))
+            .sum();
+        let mut resident = self.bytes();
+        if resident - freeable + cost > self.budget {
+            return false;
+        }
+        for held in &mut self.entries {
+            if resident + cost <= self.budget {
+                break;
+            }
+            if let Some(entry) = held.take_if(|entry| idle(entry)) {
+                resident -= texture_bytes(&entry.texture);
+            }
+        }
+        while self.entries.last().is_some_and(Option::is_none) {
+            self.entries.pop();
+        }
+        true
     }
 
     /// The texel extent a target at `scale` is allocated at.
