@@ -206,6 +206,9 @@ impl NodeRef {
     }
 
     /// Asks for a scroll.
+    ///
+    /// Carried out after the next frame's layout pass, so a node added in the same reactive flush
+    /// is measured where that layout puts it. See [`ViewHost::scroll_to`](crate::ViewHost::scroll_to).
     pub fn scroll_to(&self, target: ScrollTarget, behavior: ScrollBehavior) {
         if let Some(bound) = self.bound() {
             bound.host.scroll_to(bound.node, target, behavior);

@@ -468,6 +468,11 @@ impl Window {
             }
             self.request_frame();
         }
+        // A scroll a view asked for after this frame's last layout pass, from a handler that ran
+        // late in the frame, is kept for the next frame's layout pass.
+        if self.owes_scrolls() {
+            self.request_frame();
+        }
         if matches!(outcome, zgui_render::FrameOutcome::Recovered) {
             // The renderer rebuilt its device and holds nothing resident. Re-noting every
             // record's chunk lets the next frame restore residence in one pass of uploads,
@@ -1245,6 +1250,9 @@ impl Window {
         if relaid_out {
             self.clamp_scroll_to_content();
         }
+        // After the clamp, so a scroll is measured against the extents this pass produced, and
+        // before the fragment pass, which composes what it moves.
+        self.carry_out_owed_scrolls();
         zgui_profile::latency::note_with("w.laidout", || {
             format!(
                 "asked={width}x{height} scale={} surface={}x{} ran={relaid_out}",

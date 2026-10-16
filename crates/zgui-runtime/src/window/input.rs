@@ -771,7 +771,7 @@ impl Window {
                 node,
                 target,
                 behavior,
-            } => self.carry_out_scroll(node, target, behavior),
+            } => self.owe_scroll(node, target, behavior),
             Command::FreezeScrolling(frozen) => self.freeze_scrolling(frozen),
         }
     }

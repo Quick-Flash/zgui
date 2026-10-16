@@ -262,6 +262,10 @@ impl Window {
             .union(Dirty::RELAYOUT)
             .union(Dirty::RESHAPE)
             .union(Dirty::REBREAK);
+        // A scroll a view asked for after the last layout pass is carried out by the next one.
+        if self.owes_scrolls() {
+            return true;
+        }
         let document = self.document.borrow();
         let Some(root) = document.root_index() else {
             return false;

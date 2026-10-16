@@ -310,6 +310,13 @@ pub struct Window {
     /// re-derived from where the finger is now stops naming the list as soon as the drag carries
     /// it past the edge of its own scrollport.
     panning: Vec<zgui_dom::NodeKey>,
+    /// The scrolls views asked for, in the order they asked, carried out after the next layout
+    /// pass so that they measure the layout that holds what the same flush added.
+    owed_scrolls: Vec<(
+        zgui_dom::NodeKey,
+        zgui_view::ScrollTarget,
+        zgui_view::ScrollBehavior,
+    )>,
     /// When the earliest contact still being held becomes a long press.
     ///
     /// Kept as a moment on the loop's own clock rather than derived when the park is computed,
@@ -715,6 +722,7 @@ impl Window {
             scroll_settings: zgui_platform::ScrollSettings::default(),
             scroll_frozen: false,
             panning: Vec::new(),
+            owed_scrolls: Vec::new(),
             long_press_due: None,
             editors: crate::editing::Editors::new(),
             carets: crate::caret::Carets::new(),
