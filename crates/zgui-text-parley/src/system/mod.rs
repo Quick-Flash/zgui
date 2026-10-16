@@ -101,7 +101,7 @@ impl FontSystem {
 
     /// The number a run shaped at the normalised variation coordinates `coords` is drawn under.
     ///
-    /// The default location, empty or all zeros, is [`VariationInstance::DEFAULT`]. Every other
+    /// The default location, empty or all zeros, is [`VariationInstance::DEFAULT`](zgui_text::VariationInstance::DEFAULT). Every other
     /// location is issued a number once and keeps it.
     pub fn variation_instance(&self, coords: &[i16]) -> zgui_text::VariationInstance {
         if coords.is_empty() {

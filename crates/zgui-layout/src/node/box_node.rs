@@ -63,8 +63,8 @@ pub struct BoxNode {
     /// its block axis with a percentage.
     ///
     /// Such a percentage resolves against the block size of the context root's containing block,
-    /// so the root keeps that size in its layout question. Kept by
-    /// [`percent`](crate::boxtree::percent).
+    /// so the root keeps that size in its layout question. The box tree keeps it current when it
+    /// builds and patches boxes.
     pub atomic_percent_block: bool,
 }
 
