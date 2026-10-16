@@ -617,14 +617,14 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                 Some(movement) if clean && self.can_translate(child) => {
                     self.translate(child, movement)
                 }
-                _ => match self.layout_shift(child, &placed, owed.node) {
+                _ => match self.layout_shift(child, &placed, previous_shift, owed.node) {
                     Some((shift, snapped)) => {
                         // Adopted before the carry, so the walk finds every box below composed
                         // from the result it holds — this one included.
                         let state = self.store.state_mut(child);
                         state.composed = state.unrounded;
                         state.snapped = snapped;
-                        if shift.by == (0.0, 0.0) {
+                        if shift.by == (0.0, 0.0) && shift.scrolled == (0.0, 0.0) {
                             self.cached(child)
                         } else {
                             self.translate(child, shift)
@@ -717,6 +717,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         usable.then_some(rigid::Move {
             by,
             kind: rigid::MoveKind::Scroll,
+            scrolled: by,
             clip: placed.descent.clip,
             shift: placed.descent.shift,
         })
@@ -737,10 +738,13 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
     /// edge below the other way, which is a box of a different shape and not a moved one.
     ///
     /// Answers the snapped result beside the move, which the caller adopts before carrying.
+    /// `previous_shift` is the shift the child was last composed under: what the offsets above it
+    /// scrolled since then is part of the move as well.
     fn layout_shift(
         &self,
         child: BoxKey,
         placed: &Placed,
+        previous_shift: (f32, f32),
         generator: Option<zgui_dom::NodeKey>,
     ) -> Option<(rigid::Move, cephal::Layout)> {
         let owed = self.owed_by(child, generator);
@@ -787,6 +791,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             rigid::Move {
                 by: (dx, dy),
                 kind: rigid::MoveKind::Layout,
+                scrolled: (shift.0 - previous_shift.0, shift.1 - previous_shift.1),
                 clip: placed.descent.clip,
                 shift,
             },

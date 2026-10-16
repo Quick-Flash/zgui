@@ -73,8 +73,9 @@ pub(super) enum MoveKind {
     /// A scroll or sticky offset above it changed: the shift its contents are composed against
     /// moved with it, and the frame may answer it by translating pixels.
     Scroll,
-    /// Layout placed it somewhere else: what is above it did not scroll, so the shift stands, and
-    /// the pixels it vacated and now covers are damage no translation of the frame can answer.
+    /// Layout placed it somewhere else: the pixels it vacated and now covers are damage no
+    /// translation of the frame can answer. The offset also holds whatever the offsets above it
+    /// scrolled in the same frame, which [`Move::scrolled`] states apart.
     Layout,
 }
 
@@ -85,6 +86,13 @@ pub(super) struct Move {
     pub(super) by: (f32, f32),
     /// What moved it.
     pub(super) kind: MoveKind,
+    /// How far the scroll and sticky offsets above the subtree moved: all of `by` for a scroll,
+    /// and the part of a layout move that a scroll in the same frame added.
+    ///
+    /// Every box the move carries adds it to the shift its contents were composed against. A box
+    /// left with the old shift reads the same scroll as a movement again the next time it is
+    /// composed, and offsets its clean contents twice.
+    pub(super) scrolled: (f32, f32),
     /// The chain the subtree's own root is drawn under, after the move.
     pub(super) clip: ClipId,
     /// Everything the scroll and sticky offsets above the subtree add up to, after the move.
@@ -164,15 +172,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         }
 
         let scale = self.tables.device.scale;
-        let mut walk = Walk::over(
-            self.store,
-            self.hit,
-            self.tables,
-            self.dirty,
-            moved.size(),
-            scale,
-            moved.kind == MoveKind::Scroll,
-        );
+        let mut walk = Walk::over(self.store, self.hit, self.tables, self.dirty, moved, scale);
         match self.passes {
             Passes::Together => walk.subtree::<duty::Both>(key, moved.clip, moved.shift()),
             Passes::TogetherTimed => {

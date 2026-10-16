@@ -31,33 +31,33 @@ pub(super) struct Walk<'a, 'b, D: FrameDirty> {
     dirty: &'a mut D,
     /// The offset every piece takes.
     by: Size<DevicePx, Device>,
+    /// How far the offsets above the subtree scrolled, which every box's composed shift takes.
+    scrolled: Size<DevicePx, Device>,
     /// Device pixels per CSS pixel.
     scale: f32,
-    /// Whether the offset is a scroll, which every box's composed shift records, or a layout
-    /// move, which it does not: the shift is what a scroll above the box adds up to, and a box
-    /// that layout placed elsewhere was scrolled by nothing.
+    /// Whether the offset is a scroll, as opposed to a layout move.
     scrolls: bool,
 }
 
 impl<'a, 'b, D: FrameDirty> Walk<'a, 'b, D> {
-    /// The walk over one subtree, offset by `by`.
+    /// The walk over one subtree, carried by `moved`.
     pub(super) fn over(
         store: &'a mut LayoutStore,
         hit: &'a mut HitIndex,
         tables: &'a mut Tables<'b>,
         dirty: &'a mut D,
-        by: Size<DevicePx, Device>,
+        moved: super::Move,
         scale: f32,
-        scrolls: bool,
     ) -> Self {
         Self {
             store,
             hit,
             tables,
             dirty,
-            by,
+            by: moved.size(),
+            scrolled: Size::new(DevicePx(moved.scrolled.0), DevicePx(moved.scrolled.1)),
             scale,
-            scrolls,
+            scrolls: moved.kind == super::MoveKind::Scroll,
         }
     }
 
@@ -91,11 +91,15 @@ impl<'a, 'b, D: FrameDirty> Walk<'a, 'b, D> {
     ) {
         if T::MOVES {
             counter::bump(Counter::NodesVisited);
-            if self.scrolls {
-                self.store.state_mut(key).composed_shift.0 += self.by.width.0;
-                self.store.state_mut(key).composed_shift.1 += self.by.height.0;
-            } else {
+            if !self.scrolls {
                 counter::bump(Counter::BoxesShifted);
+            }
+            // The shift is what the scrolls above the box add up to. A layout move that came
+            // with a scroll carries the scroll as well, so the shift takes that part of it.
+            if self.scrolled != Size::new(DevicePx(0.0), DevicePx(0.0)) {
+                let state = self.store.state_mut(key);
+                state.composed_shift.0 += self.scrolled.width.0;
+                state.composed_shift.1 += self.scrolled.height.0;
             }
             // What this walk is entitled to claim: every box it carries was composed from the
             // result the engine holds for it, so carrying it is the same as composing it again.
