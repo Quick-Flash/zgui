@@ -230,6 +230,47 @@ fn every_group_marker_is_matched() {
     assert_eq!(starts, ends, "every group opened has to be closed");
 }
 
+/// How many groups a box over a `multiply` child opens, with `parent` declared on the box.
+fn groups_over_a_blending_child(parent: &str) -> usize {
+    let mut harness = Harness::new(
+        Element::new("root").children(vec![
+            Element::new("card").children(vec![Element::new("inner")]),
+        ]),
+        &format!(
+            "root {{ display: block; width: 300px }}
+             card {{ display: block; height: 60px; {parent} }}
+             inner {{ display: block; height: 20px; background: #333; mix-blend-mode: multiply }}"
+        ),
+    );
+    harness.paint_everything();
+    harness
+        .scene
+        .primitives
+        .groups
+        .iter()
+        .filter(|marker| marker.is_start)
+        .count()
+}
+
+#[test]
+fn a_filter_that_changes_no_pixel_still_isolates_a_blending_child() {
+    // `blur(0)` is an identity, so the chain it lowers to is empty. It still declares a filter,
+    // and a filter isolates what blends below it: without a group of its own the child blends
+    // with whatever is behind the card.
+    let plain = groups_over_a_blending_child("");
+    assert_eq!(
+        plain, 1,
+        "the control: the child opens its own group and nothing else does"
+    );
+    for declaration in ["filter: blur(0)", "backdrop-filter: blur(0)"] {
+        assert_eq!(
+            groups_over_a_blending_child(declaration),
+            plain + 1,
+            "`{declaration}` opened no group around the blending child"
+        );
+    }
+}
+
 #[test]
 fn an_outline_is_drawn_over_the_boxs_own_descendants() {
     // Appendix E step ten. A box's outline sorts above its children's content, and a stage that

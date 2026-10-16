@@ -33,6 +33,11 @@ pub struct GroupPaint {
     pub blend: peniko::BlendMode,
     /// Whether the box refuses to blend with anything outside itself.
     pub isolated: bool,
+    /// Whether the box declares a `filter` or a `backdrop-filter`.
+    ///
+    /// Such a box isolates the blending of its descendants, also when each filter in the chain is
+    /// an identity such as `blur(0)` and the chains above are empty.
+    pub isolates_blending: bool,
 }
 
 impl GroupPaint {
@@ -58,6 +63,7 @@ pub fn of(style: &ComputedStyle, scale: f32) -> GroupPaint {
         backdrop: zgui_layout::fragment::filter::backdrop(style, scale),
         blend: blend_of(effects.mix_blend_mode),
         isolated: style.get_box().isolation == IsolationValue::Isolate,
+        isolates_blending: !effects.filter.0.is_empty() || !effects.backdrop_filter.0.is_empty(),
     }
 }
 

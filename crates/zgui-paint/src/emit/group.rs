@@ -66,6 +66,13 @@ pub fn isolation(style: &PaintStyle, fragment: &Fragment) -> Isolation {
     if style.needs_group() {
         return Isolation::Target;
     }
+    // A filter isolates what blends below it, whatever the filter does to the pixels.
+    let blending_below = fragment
+        .flags
+        .contains(FragmentFlags::HAS_BLENDING_DESCENDANT);
+    if style.group.isolates_blending && blending_below {
+        return Isolation::Target;
+    }
     if style.group.opacity >= 1.0 {
         return Isolation::None;
     }
@@ -76,9 +83,6 @@ pub fn isolation(style: &PaintStyle, fragment: &Fragment) -> Isolation {
     if style.group.opacity <= 0.0 {
         return Isolation::Folded(0.0);
     }
-    let blending_below = fragment
-        .flags
-        .contains(FragmentFlags::HAS_BLENDING_DESCENDANT);
     if fragment.subtree_disjoint && !blending_below {
         return Isolation::Folded(style.group.opacity);
     }
@@ -293,6 +297,29 @@ mod tests {
         let mut style = translucent(1.0);
         style.group.filters.push(zgui_scene::Filter::Blur(2.0));
         assert_eq!(isolation(&style, &fragment(true, false)), Isolation::Target);
+    }
+
+    /// The style of a box that declared a filter whose chain lowered to nothing.
+    fn identity_filter() -> PaintStyle {
+        let mut style = translucent(1.0);
+        style.group.isolates_blending = true;
+        style
+    }
+
+    #[test]
+    fn an_identity_filter_isolates_a_blending_subtree() {
+        assert_eq!(
+            isolation(&identity_filter(), &fragment(true, true)),
+            Isolation::Target
+        );
+    }
+
+    #[test]
+    fn an_identity_filter_over_nothing_that_blends_needs_no_target() {
+        assert_eq!(
+            isolation(&identity_filter(), &fragment(true, false)),
+            Isolation::None
+        );
     }
 
     /// A rectangle in device pixels.
