@@ -677,3 +677,68 @@ fn a_frame_the_renderer_widens_paints_a_union_overlap_once() {
         "the overlap paints alpha once ({overlap}), as one disc does ({single}), never twice"
     );
 }
+
+/// A half-transparent square drawn through a group, under a coordinate system shifted by `shift`,
+/// or drawn at the shifted place with no coordinate system at all when `flat`.
+fn isolated(shift: f32, flat: bool) -> Scene {
+    let mut scene = Scene::new();
+    scene.begin_frame(Size::new(SIDE, SIDE));
+    let white = scene
+        .paints
+        .add(zgui_scene::Paint::Solid(opaque(255, 255, 255)));
+    scene.push_quad(Quad::filled(
+        rect(0.0, 0.0, SIDE as f32, SIDE as f32),
+        white,
+    ));
+    let red = scene
+        .paints
+        .add(zgui_scene::Paint::Solid(opaque(200, 30, 30)));
+    let (offset, space) = if flat {
+        (shift, None)
+    } else {
+        let owner = zgui_scene::PropertyOwner::new(9).expect("a handle");
+        let own = zgui_scene::OwnSpace::of(
+            Some(zgui_geom::Matrix4::translation(shift, 0.0, 0.0)),
+            None,
+            false,
+        );
+        let viewport = scene.spatial.viewport();
+        (0.0, Some(scene.spatial.space_of(viewport, owner, own)))
+    };
+    let bounds = rect(20.0 + offset, 20.0, 30.0, 30.0);
+    let mut group = GroupBoundary::start(
+        bounds,
+        0.5,
+        zgui_scene::peniko::BlendMode::default(),
+        Default::default(),
+    );
+    group.transform = space;
+    scene.push_group(group.clone());
+    let mut quad = Quad::filled(bounds, red);
+    if let Some(space) = space {
+        quad = quad.transformed(space);
+    }
+    scene.push_quad(quad);
+    scene.push_group(group.end());
+    scene.finish(&DamageSet::full());
+    scene
+}
+
+#[test]
+fn a_group_is_composited_where_its_coordinate_system_now_is() {
+    // A group's bounds are in its own coordinate system, so a write that moves the system moves
+    // the region the group is drawn and composited over with it. Read on the device as they were
+    // emitted, they cut the content off where the system has moved away from.
+    let Some((mut moved, mut flat)) = support::renderer_pair() else {
+        return;
+    };
+    for shift in [0.0, 6.0, 40.0] {
+        let drawn = present(&mut moved, &isolated(shift, false));
+        let expected = present(&mut flat, &isolated(shift, true));
+        assert_eq!(
+            drawn.max_difference(&expected),
+            0,
+            "shifted by {shift}: the group under the system differs from the group drawn there"
+        );
+    }
+}

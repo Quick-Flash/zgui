@@ -216,7 +216,7 @@ fn plan_rect(
                     continue;
                 };
                 if boundary.is_start {
-                    match begin_group(builder, boundary, current, used) {
+                    match begin_group(builder, scene, boundary, current, used) {
                         Some(group) => {
                             scissor = group.region;
                             current = group.target;
@@ -310,6 +310,7 @@ fn plan_rect(
 /// Lends a group its target and works out the region its content may touch.
 fn begin_group(
     builder: &mut PlanBuilder<'_>,
+    scene: &Scene,
     boundary: &GroupBoundary,
     parent: TargetRef,
     used: Rect<i32, Device>,
@@ -317,7 +318,15 @@ fn begin_group(
     // The content is drawn over everything the group *reads*, not only over what it writes. A blur
     // samples outside the element's box, and a target populated only where the composite lands
     // would fade to an edge that is an artefact of the damage rectangle rather than of the filter.
-    let region = enclosing(boundary.source, used)?;
+    // The rectangle is in the coordinates of the group's own system, which a place write can have
+    // moved since the group was emitted, so it goes on the device through the current matrix.
+    let source = boundary
+        .transform
+        .and_then(|space| scene.spatial.resolve(space))
+        .map_or(boundary.source, |matrix| {
+            zgui_geom::transformed_bounds(&matrix, boundary.source)
+        });
+    let region = enclosing(source, used)?;
     let target = TargetRef::Pool(builder.acquire(TargetScale::Full)?);
     Some(OpenGroup {
         target,

@@ -21,6 +21,7 @@
 //! other engines and not in this one, and whether it did would depend on where a sibling happened to
 //! sit.
 
+use zgui_geom::{Device, DevicePx, Point, Rect, Size};
 use zgui_layout::{Fragment, FragmentFlags};
 use zgui_profile::{Counter, counter};
 use zgui_scene::{BackdropFilter, ClipId, GroupBoundary, Scene, SpatialId};
@@ -84,6 +85,48 @@ pub fn isolation(style: &PaintStyle, fragment: &Fragment) -> Isolation {
     Isolation::Target
 }
 
+/// What a group writes, in the coordinate system `space` it composites under.
+///
+/// The fragment's subtree ink is on the device, through the matrix `space` had when the fragment
+/// was composed. A place write moves `space` and composes nothing, so a device rectangle goes stale
+/// while the content drawn under `space` moves on. In the coordinates of `space` the rectangle moves
+/// with the content, as the rectangle of every primitive does.
+///
+/// The fragment's own ink and local ink are one rectangle on the two sides of the composition
+/// matrix, which gives the way back for a translation and a scale. A matrix that turns, skews or
+/// flips, or a fragment with no ink of its own, maps back through the current matrix instead, as
+/// the box around the result.
+fn local_bounds(scene: &Scene, fragment: &Fragment, space: SpatialId) -> Rect<DevicePx, Device> {
+    let device = fragment.subtree_ink;
+    let Some(matrix) = scene.spatial.resolve(space) else {
+        return device;
+    };
+    let [x_axis, y_axis, ..] = matrix.columns;
+    let axis_aligned = x_axis[1] == 0.0 && y_axis[0] == 0.0 && x_axis[0] > 0.0 && y_axis[1] > 0.0;
+    let (ink, local) = (fragment.ink, fragment.local_ink);
+    let fits = |device: f32, local: f32| device > 0.0 && local > 0.0;
+    if !axis_aligned
+        || !fits(ink.size.width.0, local.size.width.0)
+        || !fits(ink.size.height.0, local.size.height.0)
+    {
+        return matrix.invert().map_or(device, |inverse| {
+            zgui_geom::transformed_bounds(&inverse, device)
+        });
+    }
+    let scale_x = local.size.width.0 / ink.size.width.0;
+    let scale_y = local.size.height.0 / ink.size.height.0;
+    Rect::new(
+        Point::new(
+            DevicePx(local.origin.x.0 + (device.origin.x.0 - ink.origin.x.0) * scale_x),
+            DevicePx(local.origin.y.0 + (device.origin.y.0 - ink.origin.y.0) * scale_y),
+        ),
+        Size::new(
+            DevicePx(device.size.width.0 * scale_x),
+            DevicePx(device.size.height.0 * scale_y),
+        ),
+    )
+}
+
 /// Opens a group for a fragment, and returns the marker to close it with.
 ///
 /// The marker is returned rather than looked up again on the way out, because a group's closing
@@ -97,7 +140,10 @@ pub fn open(
     shaders: &dyn crate::content::shader::ShaderSource,
     scale: f32,
 ) -> GroupBoundary {
-    let bounds = fragment.subtree_ink;
+    let transform = fragment.transform.filter(|id| *id != SpatialId::VIEWPORT);
+    let bounds = transform.map_or(fragment.subtree_ink, |space| {
+        local_bounds(scene, fragment, space)
+    });
     let mut filters = style.group.filters.clone();
     // After the chain the `filter` property wrote, rather than among it: the two are separate
     // properties with no order between them, and the step nothing can look inside goes last.
@@ -114,7 +160,7 @@ pub fn open(
     }
     let mut boundary =
         GroupBoundary::start(bounds, style.group.opacity, style.group.blend, filters).clipped(clip);
-    boundary.transform = fragment.transform.filter(|id| *id != SpatialId::VIEWPORT);
+    boundary.transform = transform;
     counter::bump(Counter::GroupTargets);
     scene.push_group(boundary.clone());
     boundary
@@ -243,5 +289,45 @@ mod tests {
         let mut style = translucent(1.0);
         style.group.filters.push(zgui_scene::Filter::Blur(2.0));
         assert_eq!(isolation(&style, &fragment(true, false)), Isolation::Target);
+    }
+
+    /// A rectangle in device pixels.
+    fn rect(
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    ) -> zgui_geom::Rect<zgui_geom::DevicePx, zgui_geom::Device> {
+        zgui_geom::Rect::new(
+            zgui_geom::Point::new(zgui_geom::DevicePx(x), zgui_geom::DevicePx(y)),
+            zgui_geom::Size::new(zgui_geom::DevicePx(width), zgui_geom::DevicePx(height)),
+        )
+    }
+
+    /// A slide: the fragment was composed with its system 40 pixels right, and a place write has
+    /// since moved the system back to where layout put it. The group's bounds are in the system's
+    /// own coordinates, so they do not depend on where the system is now.
+    #[test]
+    fn a_group_is_bounded_in_its_own_coordinates_whatever_its_system_moved_to() {
+        let mut fragment = fragment(false, false);
+        fragment.local_ink = rect(10.0, 10.0, 20.0, 20.0);
+        fragment.ink = rect(50.0, 10.0, 20.0, 20.0);
+        fragment.subtree_ink = rect(45.0, 5.0, 40.0, 30.0);
+        for now in [40.0, 0.0] {
+            let mut scene = zgui_scene::Scene::new();
+            let owner = zgui_scene::PropertyOwner::new(7).expect("a handle");
+            let own = zgui_scene::OwnSpace::of(
+                Some(zgui_geom::Matrix4::translation(now, 0.0, 0.0)),
+                None,
+                false,
+            );
+            let viewport = scene.spatial.viewport();
+            let space = scene.spatial.space_of(viewport, owner, own);
+            assert_eq!(
+                super::local_bounds(&scene, &fragment, space),
+                rect(5.0, 5.0, 40.0, 30.0),
+                "with the system at {now}"
+            );
+        }
     }
 }
