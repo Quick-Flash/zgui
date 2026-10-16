@@ -27,8 +27,8 @@ struct Item {
     bounds: (f32, f32, f32, f32),
     /// What colour it is.
     color: [u8; 3],
-    /// The deviation of the blur over what lies beneath it, or zero for a plain rectangle.
-    frost: f32,
+    /// The deviation of the blur over what lies beneath it, or `None` for a plain rectangle.
+    frost: Option<f32>,
     /// How far the coordinate system this is drawn under is translated from the viewport's.
     ///
     /// The transform half of the fixture. A rectangle drawn under a coordinate system of its own
@@ -44,7 +44,7 @@ impl Item {
         Self {
             bounds,
             color,
-            frost: 0.0,
+            frost: None,
             shift: (0.0, 0.0),
         }
     }
@@ -60,7 +60,7 @@ impl Item {
         Self {
             bounds,
             color: [0; 3],
-            frost: deviation,
+            frost: Some(deviation),
             shift: (0.0, 0.0),
         }
     }
@@ -82,10 +82,12 @@ impl Item {
 
     /// Every pixel this reads, which is what it paints unless it filters what is beneath it.
     fn source(&self) -> Rect<DevicePx, Device> {
-        if self.frost > 0.0 {
-            BackdropFilter::new(self.ink(), [Filter::Blur(self.frost)].into_iter().collect()).source
-        } else {
-            self.ink()
+        match self.frost {
+            Some(deviation) => {
+                BackdropFilter::new(self.ink(), [Filter::Blur(deviation)].into_iter().collect())
+                    .source
+            }
+            None => self.ink(),
         }
     }
 }
@@ -102,10 +104,10 @@ fn build(items: &[Item]) -> Scene {
         white,
     ));
     for (index, item) in items.iter().enumerate() {
-        if item.frost > 0.0 {
+        if let Some(deviation) = item.frost {
             scene.push_backdrop(BackdropFilter::new(
                 item.ink(),
-                [Filter::Blur(item.frost)].into_iter().collect(),
+                [Filter::Blur(deviation)].into_iter().collect(),
             ));
         } else {
             let paint = scene.paints.add(zgui_scene::Paint::Solid(opaque(
@@ -231,10 +233,15 @@ fn transform_animation(step: i32) -> Vec<Item> {
 /// exactly why it is the fixture that matters: the damage that reaches it comes from the content
 /// beneath it, and a rule that only looked at what changed would miss the region the panel reads.
 fn backdrop_filter_over_animating_content(step: i32) -> Vec<Item> {
+    frosted_over_animating_content(step, 5.0)
+}
+
+/// [`backdrop_filter_over_animating_content`] with a blur of `deviation`.
+fn frosted_over_animating_content(step: i32, deviation: f32) -> Vec<Item> {
     vec![
         Item::plain((0.0, 0.0, 128.0, 128.0), [230, 230, 230]),
         Item::plain((8.0 + step as f32 * 3.0, 40.0, 32.0, 48.0), [20, 20, 200]),
-        Item::frosted((32.0, 32.0, 64.0, 64.0), 5.0),
+        Item::frosted((32.0, 32.0, 64.0, 64.0), deviation),
     ]
 }
 
@@ -350,6 +357,40 @@ fn a_backdrop_over_animating_content_is_redrawn_without_smearing() {
         .is_full(),
         "the fixture must exercise a partial redraw, not fall back to the whole surface"
     );
+}
+
+#[test]
+fn a_backdrop_with_a_small_or_zero_blur_is_redrawn_without_a_seam() {
+    // A blur resamples through a half-resolution target, which reads two device pixels past its
+    // kernel. A small blur reaches less than that, and a blur of zero has no kernel at all, so
+    // these are the deviations where the read extent must count the resampling or skip the blur.
+    for deviation in [0.0, 0.2] {
+        let Some((mut tracked, mut whole_surface)) = support::renderer_pair() else {
+            return;
+        };
+        let mut items = frosted_over_animating_content(0, deviation);
+        present(&mut tracked, &build(&items));
+        present(&mut whole_surface, &build(&items));
+        for step in 1..8 {
+            let previous = items.clone();
+            items = frosted_over_animating_content(step, deviation);
+            let damaged = draw_damaged(&mut tracked, &previous, &items);
+            let full = present(&mut whole_surface, &build(&items));
+            assert_eq!(
+                damaged.max_difference(&full),
+                0,
+                "blur({deviation}), step {step}: the partial frame differs from the whole frame"
+            );
+        }
+        assert!(
+            !damage_between(
+                &frosted_over_animating_content(6, deviation),
+                &frosted_over_animating_content(7, deviation)
+            )
+            .is_full(),
+            "the fixture must exercise a partial redraw"
+        );
+    }
 }
 
 #[test]

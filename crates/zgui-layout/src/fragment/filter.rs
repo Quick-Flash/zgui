@@ -76,6 +76,8 @@ fn chain(values: &[FilterValue], scale: f32) -> FilterChain {
 /// One computed filter function.
 fn convert(value: &FilterValue, scale: f32) -> Option<Filter> {
     Some(match value {
+        // A blur of zero is the identity, so it gives no step to execute.
+        FilterValue::Blur(radius) if radius.0.px() <= 0.0 => return None,
         FilterValue::Blur(radius) => Filter::Blur(deviation(radius.0.px() * scale)),
         FilterValue::Brightness(amount) => Filter::Brightness(amount.0),
         FilterValue::Contrast(amount) => Filter::Contrast(amount.0),
@@ -107,9 +109,11 @@ fn deviation(radius: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use zgui_css::values::effect::FilterValue;
+    use zgui_css::values::length::NonNegativeLength;
     use zgui_scene::Filter;
 
-    use super::deviation;
+    use super::{chain, convert, deviation};
 
     #[test]
     fn a_blur_radius_is_twice_its_standard_deviation() {
@@ -118,5 +122,14 @@ mod tests {
         assert_eq!(deviation(-1.0), 0.0);
         assert!(Filter::Blur(deviation(0.0)).is_per_pixel());
         assert!(!Filter::Blur(deviation(8.0)).is_per_pixel());
+    }
+
+    #[test]
+    fn a_blur_of_zero_converts_to_no_filter() {
+        let blur = |px| FilterValue::Blur(NonNegativeLength::new(px));
+        assert_eq!(convert(&blur(0.0), 2.0), None);
+        assert_eq!(convert(&blur(4.0), 2.0), Some(Filter::Blur(4.0)));
+        let chain = chain(&[blur(0.0), FilterValue::Invert(1.0.into())], 1.0);
+        assert_eq!(chain.as_slice(), [Filter::Invert(1.0)]);
     }
 }

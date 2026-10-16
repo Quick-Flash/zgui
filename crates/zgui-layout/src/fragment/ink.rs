@@ -323,8 +323,9 @@ mod tests {
             Size::new(DevicePx(10.0), DevicePx(10.0)),
         );
         let spread = bleed(rect, &[Filter::Blur(2.0)]);
-        assert_eq!(spread.origin, Point::new(DevicePx(14.0), DevicePx(14.0)));
-        assert_eq!(spread.size, Size::new(DevicePx(22.0), DevicePx(22.0)));
+        // Three deviations plus the two-pixel resampling reach.
+        assert_eq!(spread.origin, Point::new(DevicePx(12.0), DevicePx(12.0)));
+        assert_eq!(spread.size, Size::new(DevicePx(26.0), DevicePx(26.0)));
     }
 
     #[test]

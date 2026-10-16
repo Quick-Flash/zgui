@@ -307,7 +307,8 @@ fn a_backdrop_filter_damages_its_source_rect_and_not_the_window() {
     // What a backdrop reads has to be inside what the frame has already redrawn, so the damage set
     // has to contain the region it samples — which is its own bounds grown by the filter's reach,
     // and not the window. The expansion is the paint stage's, and this is the shape of it: the
-    // damaged area grows by three deviations on each side and stops there.
+    // damaged area grows by three deviations plus the resampling reach on each side and stops
+    // there.
     let panel: Rect<zgui_geom::DevicePx, Device> = rect(32.0, 32.0, 64.0, 64.0);
     let backdrop = BackdropFilter::new(panel, [Filter::Blur(6.0)].into_iter().collect());
     assert!(!backdrop.reads_only_what_it_writes());
@@ -324,8 +325,8 @@ fn a_backdrop_filter_damages_its_source_rect_and_not_the_window() {
     );
     assert_eq!(
         covered.size,
-        Size::new(64 + 36, 64 + 36),
-        "and it grows by three deviations on each side rather than to the window"
+        Size::new(64 + 40, 64 + 40),
+        "and it grows by three deviations and the resampling reach on each side"
     );
     assert!(
         covered.size.width < SIDE && covered.size.height < SIDE,

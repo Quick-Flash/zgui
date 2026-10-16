@@ -78,7 +78,7 @@ fn every_resolved_field_a_primitive_carries_reaches_the_page() {
     assert!(text.contains("transform=#1 ["));
     // The group's blend, opacity and filters, and the read extent a blur forces.
     assert!(text.contains("opacity=0.5 blend=Multiply/SrcOver filters=[blur(3)]"));
-    assert!(text.contains("source=rect(-1, 15, 138, 98)"));
+    assert!(text.contains("source=rect(-3, 13, 142, 102)"));
     // Vector geometry, not only its box.
     assert!(text.contains("fill_rule=EvenOdd"));
     assert!(text.contains(" d=\"M"));

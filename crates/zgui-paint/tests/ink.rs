@@ -357,11 +357,13 @@ fn a_filters_reach_grows_with_the_device_scale() {
         reach(at_one) > 0.0,
         "a blur has to reach outside its bounds"
     );
+    // The resampling reach is in device pixels at every density, so only the kernel scales.
+    let kernel = |extent| reach(extent) - zgui_scene::Filter::RESAMPLE_REACH;
     assert!(
-        (reach(at_two) - 2.0 * reach(at_one)).abs() < 1e-3,
-        "twice the density is twice the reach: {} against {}",
-        reach(at_two),
-        reach(at_one)
+        (kernel(at_two) - 2.0 * kernel(at_one)).abs() < 1e-3,
+        "twice the density is twice the kernel's reach: {} against {}",
+        kernel(at_two),
+        kernel(at_one)
     );
 }
 
