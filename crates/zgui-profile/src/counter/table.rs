@@ -113,6 +113,9 @@ counters! {
     /// Elements that took a moved custom property map into their style without a cascade.
     CustomMapsRefreshed => custom_maps_refreshed, Group::BackendNeutral;
 
+    /// Elements whose animations took new keyframe values because a custom property they read moved.
+    KeyframesRefreshed => keyframes_refreshed, Group::BackendNeutral;
+
     /// Fragments whose paint operations were emitted afresh instead of replayed from cache.
     Repaints => repaints, Group::BackendNeutral;
 

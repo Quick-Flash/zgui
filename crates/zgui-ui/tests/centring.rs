@@ -417,3 +417,45 @@ fn a_themes_surface_motion_wins_over_the_side_it_opened_on() {
          right corner the theme asked for"
     );
 }
+
+/// A popover entrance with only its slide left, slowly enough that an early reading is part way.
+const SLIDING: &str = ".zui-surface {
+                           --zui-surface-enter-scale: 1;
+                           --zui-surface-enter-opacity: 1;
+                           --zui-surface-enter-duration: 2000ms;
+                       }
+                       box.zui-popover { background-color: #ff00ff; color: #ffffff }";
+
+#[test]
+fn an_anchored_surface_slides_in_from_the_side_it_opened_on() {
+    // The positioner learns its side after the first layout, one frame after the entrance started,
+    // and the entrance's first keyframe reads the offset that side sets.
+    let Some(mut stage) = Stage::open(&format!("{SHEET}\n{SLIDING}"), || {
+        view! {
+            ThemeProvider {
+                column(class = "page") {
+                    Popover {
+                        PopoverTrigger {{POPOVER_TRIGGER}}
+                        PopoverContent {text {"Dimensions"}}
+                    }
+                }
+            }
+        }
+    }) else {
+        eprintln!("skipped: no usable graphics device");
+        return;
+    };
+    let at = aim(&stage, POPOVER_TRIGGER);
+    stage.click(at);
+    stage.wait(Duration::from_millis(200));
+    let entering = panel(&stage);
+
+    stage.wait(Duration::from_millis(2_400));
+    let settled = panel(&stage);
+    let offset = settled.origin.y.0 - entering.origin.y.0;
+    assert!(
+        offset > 2.0 && offset <= 8.0 + SLACK,
+        "the popover was {entering:?} part way in and {settled:?} at rest, so it did not slide \
+         down from the side it opened below"
+    );
+}

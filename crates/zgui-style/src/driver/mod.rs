@@ -67,6 +67,12 @@ pub struct Restyle {
     pub records: Vec<Restyled>,
     /// Time spent inside the style engine.
     pub engine_time: Duration,
+    /// The elements whose running or filling animations took new keyframe values, because a
+    /// custom property their `@keyframes` read moved.
+    ///
+    /// The animation tick reads the new values. A loop with nothing else to run parks before it
+    /// does, so whoever drives the frames asks for one more.
+    pub refreshed: Vec<zgui_dom::NodeIndex>,
 }
 
 impl Restyle {
@@ -116,6 +122,33 @@ pub(crate) struct Pass<'a> {
     pub(crate) refs: &'a traversal::RefsCache,
 }
 
+/// What one traversal did.
+pub(crate) struct PassOutcome {
+    /// What it styled.
+    pub(crate) records: Vec<Restyled>,
+    /// The elements whose keyframes it computed again.
+    pub(crate) refreshed: Vec<zgui_dom::NodeIndex>,
+    /// How many distinct workers ran.
+    pub(crate) workers: usize,
+    /// Whether it ran at all.
+    pub(crate) traversed: bool,
+    /// Time spent inside the style engine.
+    pub(crate) time: Duration,
+}
+
+impl PassOutcome {
+    /// A traversal that did nothing, which took `time` to decide.
+    fn nothing(time: Duration) -> Self {
+        Self {
+            records: Vec::new(),
+            refreshed: Vec::new(),
+            workers: 0,
+            traversed: false,
+            time,
+        }
+    }
+}
+
 /// Runs one traversal over the document and reports what it styled.
 ///
 /// Returns nothing at all when the engine decides there is nothing to traverse, which is the
@@ -131,7 +164,7 @@ pub(crate) fn run_pass(
     lock: &SharedRwLock,
     pass: Pass<'_>,
     flags: TraversalFlags,
-) -> (Vec<Restyled>, usize, bool, Duration) {
+) -> PassOutcome {
     let Pass {
         document,
         snapshots,
@@ -141,7 +174,7 @@ pub(crate) fn run_pass(
         refs,
     } = pass;
     let Some(root) = document.root() else {
-        return (Vec::new(), 0, false, Duration::ZERO);
+        return PassOutcome::nothing(Duration::ZERO);
     };
     let start = Instant::now();
 
@@ -170,7 +203,7 @@ pub(crate) fn run_pass(
     let token = <RecalcStyle<'_> as DomTraversal<Node<'_>>>::pre_traverse(from, &context);
     if !token.should_traverse() {
         drop(context);
-        return (Vec::new(), 0, false, start.elapsed());
+        return PassOutcome::nothing(start.elapsed());
     }
 
     // The traversal styles each element against the table it drops a finished animation from,
@@ -183,10 +216,16 @@ pub(crate) fn run_pass(
     document
         .guarded(|| style::driver::traverse_dom(&traverser, token, pool))
         .expect("the document is not poisoned");
-    let (records, workers) = traverser.finish();
+    let (records, refreshed, workers) = traverser.finish();
     held.release(&table, now.seconds());
     drop(read);
-    (records, workers, true, start.elapsed())
+    PassOutcome {
+        records,
+        refreshed,
+        workers,
+        traversed: true,
+        time: start.elapsed(),
+    }
 }
 
 /// The element the traversal starts at: the deepest one that every obligation lies at or below.

@@ -77,6 +77,8 @@ pub struct StyleEngine {
     ///
     /// Each keeps its hint until a restyle finds it in the document again.
     animation_waiting: Vec<zgui_dom::NodeKey>,
+    /// The elements whose animations the last restyle gave new keyframe values.
+    refreshed_animations: Vec<zgui_dom::NodeIndex>,
     /// What each rule chain reads and declares, kept from one restyle to the next.
     refs: crate::driver::traversal::RefsCache,
     /// The user-agent sheet, held so that it stays installed.
@@ -125,6 +127,7 @@ impl StyleEngine {
             animations: Animations::new(),
             animation_marks: Vec::new(),
             animation_waiting: Vec::new(),
+            refreshed_animations: Vec::new(),
             refs: crate::driver::traversal::RefsCache::default(),
             _user_agent: user_agent,
         }
@@ -219,6 +222,14 @@ impl StyleEngine {
     /// again.
     pub fn text_paint_updates(&self) -> &[TextPaintUpdate] {
         &self.text_paint_updates
+    }
+
+    /// The elements whose animations the last restyle gave new keyframe values.
+    ///
+    /// A custom property that a `@keyframes` rule reads moved under a running or filling
+    /// animation. The next animation tick reads the new values, so the frame loop must run one.
+    pub fn refreshed_animations(&self) -> &[zgui_dom::NodeIndex] {
+        &self.refreshed_animations
     }
 
     /// Installs a sheet at the end of `origin`'s sheets.

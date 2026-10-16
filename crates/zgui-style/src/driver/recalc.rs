@@ -199,6 +199,7 @@ pub(super) fn recalc_style_at<'doc, F>(
 
     if let Some(restyle_kind) = restyle_kind {
         let (hint, changed) = compute_style(
+            traversal,
             traversal_data,
             context,
             element,
@@ -280,7 +281,8 @@ fn parent_style(element: E<'_>) -> Option<ServoArc<ComputedValues>> {
 
 /// Whether the element's own declarations read any of `changed`, or declare custom properties.
 ///
-/// Generated content cascades on rules of its own, which are scanned the same way.
+/// Generated content cascades on rules of its own, which are scanned the same way. The
+/// `@keyframes` rules the element's animations name count as its own declarations.
 fn reads_custom_properties(
     traversal: &RecalcStyle<'_>,
     element: E<'_>,
@@ -310,6 +312,14 @@ fn reads_custom_properties(
         return true;
     };
     if declares_any(style, &traversal.wildcard_names) {
+        return true;
+    }
+    // The element's `@keyframes` rules read through `var()` as well.
+    if style.get_ui().specifies_animations()
+        && traversal
+            .animation_reads(element, style)
+            .any(|refs| refs.reads_any(&changed.names))
+    {
         return true;
     }
     let pseudos = data
@@ -404,6 +414,7 @@ fn with_inherited_map(old: &ComputedValues, parent: &ComputedValues) -> ServoArc
 }
 
 fn compute_style<'doc>(
+    traversal: &RecalcStyle<'_>,
     traversal_data: &PerLevelTraversalData,
     context: &mut StyleContext<E<'doc>>,
     element: E<'doc>,
@@ -503,6 +514,20 @@ fn compute_style<'doc>(
     // observe of the change, which is the difference between the style they inherited from and
     // the one they will.
     let old_primary = data.styles.primary.clone();
+    // A keyframe that reads a custom property holds the value it had when its animation started,
+    // and the engine below starts an animation again only when its declarations change.
+    if !context.shared.traversal_flags.for_animation_only()
+        && let Some(old) = &old_primary
+        && crate::driver::animations::refresh::keyframes(
+            traversal,
+            context,
+            element,
+            old,
+            new_styles.primary_style(),
+        )
+    {
+        traversal.note_refreshed(element.index());
+    }
     let hint = element.finish_restyle(context, data, new_styles, important_rules_changed);
     match (old_primary, data.styles.get_primary()) {
         (Some(old), Some(new)) if !engine_hints() => {

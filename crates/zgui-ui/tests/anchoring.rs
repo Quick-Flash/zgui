@@ -65,6 +65,12 @@ const LIST: &str = "Pound sterlingEuro";
 /// How far a rectangle may be from where it belongs before the window looks wrong.
 const SLACK: f32 = 2.0;
 
+/// Long enough for a list's entrance to end, so its box is read where it rests.
+///
+/// The entrance slides the list towards its trigger, so a box read before it ends is off by the
+/// slide.
+const ENTERED: Duration = Duration::from_millis(400);
+
 /// A select whose trigger is shrink-wrapped, so the box saying [`TRIGGER`] is the trigger's box.
 #[component]
 fn Probe(
@@ -210,7 +216,7 @@ fn a_select_deep_in_a_page(density: f64) {
     );
 
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     assert_under(trigger, innermost_box_saying(&stage, LIST), density);
 }
@@ -237,7 +243,7 @@ fn a_select_at_the_top_of_a_page_opens_its_list_under_its_trigger() {
     let trigger = box_saying(&stage, TRIGGER);
 
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     assert_under(trigger, innermost_box_saying(&stage, LIST), DENSE);
 }
@@ -265,7 +271,7 @@ fn a_select_at_the_bottom_of_the_window_opens_its_list_above_its_trigger() {
     );
 
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     let list = innermost_box_saying(&stage, LIST);
     let wanted = GAP * DENSE as f32;
@@ -297,7 +303,7 @@ fn a_select_against_the_right_edge_shifts_its_list_back_inside_the_window() {
     );
 
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     let list = innermost_box_saying(&stage, LIST);
     assert!(
@@ -341,7 +347,7 @@ fn a_select_opened_after_the_page_has_scrolled_since_it_last_opened_follows_its_
         (400.0..600.0).contains(&rect.origin.y.0)
     });
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
     assert_under(first, innermost_box_saying(&stage, LIST), DENSE);
     // The clock as well as the frames: a surface is kept mounted through its exit animation, so a
     // list that has been dismissed and not yet faded out is still a box in the window.
@@ -357,7 +363,7 @@ fn a_select_opened_after_the_page_has_scrolled_since_it_last_opened_follows_its_
     });
 
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     assert_under(trigger, innermost_box_saying(&stage, LIST), DENSE);
 }
@@ -383,7 +389,7 @@ fn a_select_inside_a_scrolled_region_opens_its_list_under_its_trigger() {
     );
 
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     assert_under(trigger, innermost_box_saying(&stage, LIST), DENSE);
 }
@@ -674,7 +680,7 @@ fn a_long_select_in_the_middle_of_the_window_is_capped_to_the_window_and_scrolls
         }
     });
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     let panel = panel_saying(&stage, &long_list_text());
     assert_inside(panel, DENSE);
@@ -692,7 +698,7 @@ fn a_long_select_near_the_bottom_of_the_window_opens_above_and_is_capped() {
     });
     let trigger = box_saying(&stage, TRIGGER);
     stage.click_saying(TRIGGER);
-    stage.settle();
+    stage.hold(ENTERED);
 
     let panel = panel_saying(&stage, &long_list_text());
     assert_inside(panel, 1.0);

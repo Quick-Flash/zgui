@@ -9,6 +9,7 @@
 //! | `scope` | the marks a restyle never turns into engine work |
 //! | `settling` | where a transition leaves the element's own style once it has finished |
 //! | `fill` | what a finished animation that fills forwards holds through a later restyle |
+//! | `keyframe_vars` | keyframe values that read a custom property, as the property moves |
 //! | `damage` | what each damage level the engine produces makes the frame owe |
 //! | `pass` | the shape of one pass: what it collects, how wide it runs, what it retires |
 //! | `throughput` | how fast a restyle runs, recorded rather than asserted |
@@ -24,6 +25,8 @@ mod custom_reader;
 mod damage;
 #[path = "restyle/fill.rs"]
 mod fill;
+#[path = "restyle/keyframe_vars.rs"]
+mod keyframe_vars;
 #[path = "restyle/moved.rs"]
 mod moved;
 #[path = "restyle/negation.rs"]

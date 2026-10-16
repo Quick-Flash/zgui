@@ -6,9 +6,10 @@
 //! a private field — so the declarations are serialised and the text scanned, once per
 //! declaration block, and the answer is cached by the rule node that names the block chain.
 
-use style::properties::{CustomDeclarationValue, PropertyDeclaration};
+use style::properties::{CustomDeclarationValue, PropertyDeclaration, PropertyDeclarationBlock};
 use style::rule_tree::StrongRuleNode;
 use style::shared_lock::StylesheetGuards;
+use style::stylesheets::keyframes_rule::{KeyframesAnimation, KeyframesStepValue};
 
 /// What one element's whole rule chain says about custom properties.
 #[derive(Debug, Default)]
@@ -50,38 +51,75 @@ pub(crate) fn refs_of(rules: &StrongRuleNode, guards: &StylesheetGuards<'_>) -> 
             continue;
         };
         let guard = guards.for_origin(node.cascade_level().origin().origin());
-        let block = source.read(guard);
-        for declaration in block.declarations() {
-            match declaration {
-                PropertyDeclaration::Custom(custom) => {
-                    refs.declares = true;
-                    refs.declared.push(custom.name.to_string());
-                    if let CustomDeclarationValue::Unparsed(value) = &custom.value {
-                        scan_var_names(&value.css, &mut refs.reads);
-                    }
-                }
-                PropertyDeclaration::WithVariables(_) => {
-                    text.clear();
-                    if declaration.to_css(&mut text).is_ok() {
-                        scan_var_names(&text, &mut refs.reads);
-                    }
-                }
-                _ => {}
-            }
+        scan_block(source.read(guard), &mut refs, &mut text);
+    }
+    refs.finish();
+    refs
+}
+
+/// Everything the `@keyframes` rule `animation` reads through `var()`.
+///
+/// A keyframe's custom property declarations are ignored by the engine, so the answer only reads.
+pub(crate) fn keyframe_refs_of(
+    animation: &KeyframesAnimation,
+    guards: &StylesheetGuards<'_>,
+) -> RuleRefs {
+    let mut refs = RuleRefs::default();
+    let mut text = String::new();
+    for step in animation
+        .steps
+        .iter()
+        .chain(&animation.steps_with_range_name)
+    {
+        if let KeyframesStepValue::Declarations { block } = &step.value {
+            scan_block(block.read_with(guards.author), &mut refs, &mut text);
         }
     }
-    refs.reads.sort_unstable();
-    refs.reads.dedup();
-    refs.declared.sort_unstable();
-    refs.declared.dedup();
-    refs.bloom = if refs.declares {
-        zgui_dom::side::readers::ALL
-    } else {
-        refs.reads.iter().fold(0, |bits, name| {
-            bits | zgui_dom::side::readers::name_bits(name)
-        })
-    };
+    refs.declares = false;
+    refs.declared.clear();
+    refs.finish();
     refs
+}
+
+/// Adds what one declaration block reads and declares to `refs`.
+///
+/// `text` is scratch space for the serialised declarations.
+fn scan_block(block: &PropertyDeclarationBlock, refs: &mut RuleRefs, text: &mut String) {
+    for declaration in block.declarations() {
+        match declaration {
+            PropertyDeclaration::Custom(custom) => {
+                refs.declares = true;
+                refs.declared.push(custom.name.to_string());
+                if let CustomDeclarationValue::Unparsed(value) = &custom.value {
+                    scan_var_names(&value.css, &mut refs.reads);
+                }
+            }
+            PropertyDeclaration::WithVariables(_) => {
+                text.clear();
+                if declaration.to_css(text).is_ok() {
+                    scan_var_names(text, &mut refs.reads);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+impl RuleRefs {
+    /// Sorts and deduplicates the names, and files the Bloom set.
+    fn finish(&mut self) {
+        self.reads.sort_unstable();
+        self.reads.dedup();
+        self.declared.sort_unstable();
+        self.declared.dedup();
+        self.bloom = if self.declares {
+            zgui_dom::side::readers::ALL
+        } else {
+            self.reads.iter().fold(0, |bits, name| {
+                bits | zgui_dom::side::readers::name_bits(name)
+            })
+        };
+    }
 }
 
 /// Appends every custom property name `var(--name` in `text` names, without the prefix.

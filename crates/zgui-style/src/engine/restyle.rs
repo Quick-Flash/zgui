@@ -73,6 +73,7 @@ impl StyleEngine {
     /// obligation as a result.
     pub fn restyle(&mut self, document: &mut Document, pool: Option<&StylePool>) -> Restyle {
         self.text_paint_updates.clear();
+        self.refreshed_animations.clear();
         if !self.needs_restyle(document) {
             return Restyle::default();
         }
@@ -104,7 +105,7 @@ impl StyleEngine {
             // input the rest of the frame — including a descendant that inherits from it — is
             // styled and laid out against.
             if self.settle_animation_marks(document) {
-                let (records, workers, traversed, time) = driver::run_pass(
+                let outcome = driver::run_pass(
                     &mut self.stylist,
                     &self.lock,
                     driver::Pass {
@@ -117,10 +118,8 @@ impl StyleEngine {
                     },
                     TraversalFlags::AnimationOnly,
                 );
-                report.animation_pass = traversed;
-                report.traversed |= traversed;
-                report.workers = report.workers.max(workers);
-                report.engine_time += time;
+                report.animation_pass = outcome.traversed;
+                let records = absorb_outcome(&mut report, outcome);
 
                 self.translate_records(document, &records, &mut sink);
                 clear_restyle_state(document, &records);
@@ -130,7 +129,7 @@ impl StyleEngine {
             // At most two passes: the second exists only for the root-metrics fixpoint, and a
             // third could not converge on anything the second did not.
             for pass in 0..2u8 {
-                let (records, workers, traversed, time) = driver::run_pass(
+                let outcome = driver::run_pass(
                     &mut self.stylist,
                     &self.lock,
                     driver::Pass {
@@ -144,9 +143,7 @@ impl StyleEngine {
                     TraversalFlags::empty(),
                 );
                 report.passes += 1;
-                report.traversed |= traversed;
-                report.workers = report.workers.max(workers);
-                report.engine_time += time;
+                let records = absorb_outcome(&mut report, outcome);
 
                 self.translate_records(document, &records, &mut sink);
                 clear_restyle_state(document, &records);
@@ -198,6 +195,7 @@ impl StyleEngine {
             Counter::ElementsRecascaded,
             (report.styled - report.matched) as u64,
         );
+        self.refreshed_animations.clone_from(&report.refreshed);
         report
     }
 
@@ -296,6 +294,15 @@ fn mark_root_for_recascade(document: &mut Document) {
         data.hint.insert(RestyleHint::recascade_subtree());
     }
     propagate::mark(document.store_mut(), root, Dirty::RECASCADE);
+}
+
+/// Folds one pass's figures into the report, and hands its records back for translation.
+fn absorb_outcome(report: &mut Restyle, outcome: driver::PassOutcome) -> Vec<Restyled> {
+    report.traversed |= outcome.traversed;
+    report.workers = report.workers.max(outcome.workers);
+    report.engine_time += outcome.time;
+    report.refreshed.extend(outcome.refreshed);
+    outcome.records
 }
 
 /// Folds one pass's records into the report.
