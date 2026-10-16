@@ -29,6 +29,31 @@ fn the_topmost_fragment_under_a_point_is_the_one_painted_last() {
 }
 
 #[test]
+fn a_later_positioned_sibling_answers_over_an_earlier_absolute_box() {
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![
+            Element::new("a").children(vec![Element::new("r"), Element::new("c")]),
+        ]),
+        "root { display: block; width: 200px }
+         a { display: block; position: relative; height: 40px }
+         r { display: block; position: absolute; top: 0; left: 0; right: 0; height: 40px }
+         c { display: block; position: relative; height: 40px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    let frame = lay_out(&mut store, &mut content, 200.0, 200.0);
+
+    let c = box_named(&store, &fixture, "c");
+    let hits = frame.hit.hit(
+        Point::new(DevicePx(20.0), DevicePx(20.0)),
+        &frame.clips,
+        &frame.spatial,
+    );
+    let top = store.fragment(hits[0]).expect("live");
+    assert_eq!(top.box_, c, "the sibling written later is painted last");
+}
+
+#[test]
 fn a_fragment_that_takes_no_pointer_events_is_not_an_answer() {
     let fixture = Fixture::new(
         Element::new("root").children(vec![Element::new("under"), Element::new("ghost")]),

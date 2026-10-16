@@ -397,13 +397,17 @@ fn the_emit_walk_and_the_hit_index_agree_about_painting_order() {
     // two from drifting apart in a way that shows up only as a click landing on the wrong element.
     let mut harness = Harness::sized(
         Element::new("root").children(vec![
+            Element::new("absolute"),
             Element::new("under").classes(&["back"]),
             Element::new("mid").children(vec![Element::new("relative")]),
             Element::new("over").classes(&["front"]),
             Element::new("floated"),
+            Element::new("late"),
         ]),
         "root { display: block; width: 300px; height: 400px; position: relative; z-index: 0 }
          under, mid, over, floated { display: block; height: 40px; background: #eee }
+         absolute { display: block; position: absolute; inset: 0; background: #888 }
+         late { display: block; height: 40px; position: relative; background: #555 }
          .back { position: relative; z-index: -1 }
          .front { position: relative; z-index: 3 }
          relative { display: block; height: 20px; position: relative; background: #333 }
@@ -433,6 +437,15 @@ fn the_emit_walk_and_the_hit_index_agree_about_painting_order() {
         painted, expected,
         "the walk that emits and the walk that indexes hits put the boxes in different orders"
     );
+    // The absolute box is re-parented onto the root's layout list, and still paints in tree order.
+    let at = |name| {
+        let key = harness.box_of(name);
+        painted
+            .iter()
+            .position(|held| *held == key)
+            .expect("painted")
+    };
+    assert!(at("absolute") < at("late"));
 }
 
 #[test]

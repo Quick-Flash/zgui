@@ -524,3 +524,65 @@ fn a_child_mounted_under_an_element_that_is_not_displayed_owes_no_boxes() {
         "the tree a build produces differs, so something under `display: none` generates a box"
     );
 }
+
+/// The paint order positions of the boxes the named elements generated.
+fn painted(store: &LayoutStore, fixture: &Fixture, names: &[&str]) -> Vec<usize> {
+    let root = store.root().expect("a root");
+    let order = zgui_layout::fragment::stacking::paint_order(store, root);
+    names
+        .iter()
+        .map(|name| {
+            let key = boxes(store, fixture, name)[0];
+            order.iter().position(|held| *held == key).expect("painted")
+        })
+        .collect()
+}
+
+#[test]
+fn an_absolute_box_keeps_its_tree_order_when_a_sibling_or_itself_is_rebuilt() {
+    let _recording = Recording::begin();
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("a").children(vec![
+            Element::new("x").children(vec![Element::new("xi").text("x")]),
+            Element::new("r").children(vec![Element::new("ri").text("r")]),
+            Element::new("c"),
+        ])]),
+        "root { display: block; width: 400px }
+         a { display: block; position: relative }
+         x, c { display: block; position: relative; height: 10px }
+         xi, ri { display: block }
+         r { display: block; position: absolute; inset: 0 }",
+    );
+    let mut store = fixture.box_tree();
+    let order = painted(&store, &fixture, &["x", "r", "c"]);
+    assert!(order[0] < order[1] && order[1] < order[2], "{order:?}");
+
+    // `x` is rebuilt and put in place of the box `r` was written after.
+    let x = boxes(&store, &fixture, "x");
+    patch::rebuild(
+        &mut store,
+        &fixture.document,
+        &owes_boxes(element(&fixture, "xi")),
+    )
+    .expect("a block inside a block is confined");
+    assert_ne!(boxes(&store, &fixture, "x"), x, "`x` has new boxes");
+    let order = painted(&store, &fixture, &["x", "r", "c"]);
+    assert!(order[0] < order[1] && order[1] < order[2], "{order:?}");
+    let r = boxes(&store, &fixture, "r")[0];
+    assert_eq!(
+        store.declared(r).and_then(|declared| declared.after),
+        Some(boxes(&store, &fixture, "x")[0]),
+        "the record follows the new box"
+    );
+
+    // `r` itself is rebuilt in place.
+    patch::rebuild(
+        &mut store,
+        &fixture.document,
+        &owes_boxes(element(&fixture, "ri")),
+    )
+    .expect("a block inside an absolute box is confined");
+    assert_ne!(boxes(&store, &fixture, "r")[0], r, "`r` has new boxes");
+    let order = painted(&store, &fixture, &["x", "r", "c"]);
+    assert!(order[0] < order[1] && order[1] < order[2], "{order:?}");
+}

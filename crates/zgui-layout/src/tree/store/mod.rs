@@ -28,6 +28,7 @@ use zgui_dom::NodeKey;
 use zgui_dom::side::{BoxKey, BoxList};
 use zgui_profile::{Counter, counter};
 
+use crate::boxtree::absolute::Declared;
 use crate::fragment::{FragKey, FragList, Fragment};
 use crate::key::{named, slot};
 use crate::node::box_node::BoxNode;
@@ -70,6 +71,8 @@ pub struct LayoutStore {
     replaced: PagedVec<BoxKey, Option<ReplacedBox>, 64>,
     /// Registry references held only by custom boxes.
     custom: PagedVec<BoxKey, Option<CustomBox>, 64>,
+    /// Where each out-of-flow box was written, held only by re-parented boxes.
+    declared: PagedVec<BoxKey, Option<Declared>, 64>,
     /// The boxes whose style puts them in a class some pass has to visit.
     rosters: Rosters,
     /// Every distinct computed style a live box holds, interned once each.
@@ -170,6 +173,7 @@ impl LayoutStore {
             layout: PagedVec::for_domain(box_domain),
             replaced: PagedVec::for_domain(box_domain),
             custom: PagedVec::for_domain(box_domain),
+            declared: PagedVec::for_domain(box_domain),
             rosters: Rosters::default(),
             styles: StyleTable::default(),
             style_slots: PagedVec::for_domain(box_domain),
@@ -551,6 +555,7 @@ impl LayoutStore {
         self.layout.clear(key);
         self.replaced.clear(key);
         self.custom.clear(key);
+        self.declared.clear(key);
         if self.root == Some(key) {
             self.root = None;
         }
@@ -565,6 +570,16 @@ impl LayoutStore {
         core::mem::take(&mut self.retired_boxes)
     }
 
+    /// Where an out-of-flow box was written, or `None` for a box that was not re-parented.
+    pub fn declared(&self, key: BoxKey) -> Option<Declared> {
+        self.declared.get(key).copied().flatten()
+    }
+
+    /// Records where an out-of-flow box was written.
+    pub(crate) fn set_declared(&mut self, key: BoxKey, declared: Option<Declared>) {
+        self.declared.replace(key, declared);
+    }
+
     /// Drops this frame's removed boxes and fragments and returns their slots to the allocator.
     pub fn recycle(&mut self) {
         self.boxes.recycle();
@@ -572,6 +587,7 @@ impl LayoutStore {
         self.layout.compact_by(Option::is_none);
         self.replaced.compact_by(Option::is_none);
         self.custom.compact_by(Option::is_none);
+        self.declared.compact_by(Option::is_none);
         self.style_slots.compact_by(Option::is_none);
     }
 

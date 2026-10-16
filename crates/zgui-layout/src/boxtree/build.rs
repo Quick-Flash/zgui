@@ -454,6 +454,19 @@ impl Builder<'_> {
                 node.parent_fc = fc;
             }
         }
+        // Where each out-of-flow child was written, which orders it among the siblings it is
+        // re-parented next to.
+        let mut after = None;
+        for child in &children {
+            if child.out_of_flow {
+                self.store.set_declared(
+                    child.key,
+                    Some(crate::boxtree::absolute::Declared { parent: key, after }),
+                );
+            } else {
+                after = Some(child.key);
+            }
+        }
         let node = self.store.get_mut(key).expect("a live box");
         node.children = layout_children;
         node.paint_children = paint_children;
