@@ -1,0 +1,236 @@
+//! Where the default sheets put the parts of a component, read off a laid-out window.
+//!
+//! Each fixture mounts one component under the default theme and reads the boxes the layout gave
+//! its parts. Nothing here is about pixels, so no graphics device is needed.
+
+mod desktop;
+
+use zgui::geom::{Device, DevicePx, Rect};
+use zgui::view;
+use zgui::view::NodeRef;
+use zgui_ui::prelude::*;
+use zgui_ui_icons::prelude::*;
+use zgui_ui_icons::set::status::CHECK_CIRCLE;
+use zgui_ui_tokens::prelude::*;
+
+use crate::desktop::census::absolute;
+use crate::desktop::stage::Stage;
+
+/// The page every fixture is laid out on.
+const SHEET: &str = ":root { font-family: sans-serif } .page { padding: 24px; width: 640px }";
+
+/// How far apart two edges can be and still be the same edge.
+const SLACK: f32 = 1.0;
+
+/// The box of the innermost laid-out node that says exactly `text`.
+fn text_box(stage: &Stage, text: &str) -> Rect<DevicePx, Device> {
+    stage
+        .census()
+        .control(text)
+        .and_then(|seen| seen.rect)
+        .unwrap_or_else(|| panic!("nothing on the page says {text:?}"))
+}
+
+/// The box of the element `node` was bound to.
+fn own_box(stage: &Stage, node: NodeRef) -> Rect<DevicePx, Device> {
+    let id = node.get_untracked().expect("the element is in the tree");
+    absolute(stage.handles(), id).expect("the element was laid out")
+}
+
+fn right(rect: Rect<DevicePx, Device>) -> f32 {
+    rect.origin.x.0 + rect.size.width.0
+}
+
+fn bottom(rect: Rect<DevicePx, Device>) -> f32 {
+    rect.origin.y.0 + rect.size.height.0
+}
+
+#[derive(Clone)]
+struct Payment {
+    email: &'static str,
+    amount: &'static str,
+}
+
+fn payments() -> Vec<Payment> {
+    vec![
+        Payment { email: "ken@example.com", amount: "$316.00" },
+        Payment { email: "abe@example.com", amount: "$242.00" },
+    ]
+}
+
+fn payment_columns() -> Vec<Column<Payment>> {
+    vec![
+        Column::new("email", "Email", |p: &Payment| p.email.to_owned()),
+        Column::new("amount", "Amount", |p: &Payment| p.amount.to_owned())
+            .aligned(CellAlign::End)
+            .sortable_by(|a: &Payment, b: &Payment| a.amount.cmp(b.amount)),
+        Column::new("note", "Note", |_: &Payment| String::from("ok")).aligned(CellAlign::End),
+    ]
+}
+
+#[test]
+fn an_end_aligned_heading_lines_up_with_its_cells() {
+    let mut stage = Stage::open(SHEET, || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                box(class = "page") {
+                    DataTable(
+                        rows = payments(),
+                        columns = payment_columns(),
+                        row_id = |p: &Payment| p.email.to_owned()
+                    )
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let cell = right(text_box(&stage, "$316.00"));
+    let sortable = right(text_box(&stage, "Amount"));
+    assert!(
+        (sortable - cell).abs() <= SLACK,
+        "the sortable heading ends at {sortable} and its cells at {cell}"
+    );
+    let cell = right(text_box(&stage, "ok"));
+    let plain = right(text_box(&stage, "Note"));
+    assert!(
+        (plain - cell).abs() <= SLACK,
+        "the plain heading ends at {plain} and its cells at {cell}"
+    );
+}
+
+#[test]
+fn a_virtualised_table_draws_rows_as_tall_as_its_row_size() {
+    let mut stage = Stage::open(SHEET, || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                box(class = "page") {
+                    DataTable(
+                        rows = payments(),
+                        columns = payment_columns(),
+                        row_id = |p: &Payment| p.email.to_owned(),
+                        virtualized = true,
+                        body_height = 300.0
+                    )
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let first = text_box(&stage, "ken@example.com");
+    let second = text_box(&stage, "abe@example.com");
+    let step = second.origin.y.0 - first.origin.y.0;
+    assert!(
+        (step - 40.0).abs() <= SLACK,
+        "rows are {step}px apart and the default row size is 40px"
+    );
+}
+
+#[test]
+fn an_icon_passed_to_an_alert_sits_beside_the_title() {
+    let mut stage = Stage::open(SHEET, || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                box(class = "page") {
+                    Alert(live = false, icon = false) {
+                        Icon(icon = CHECK_CIRCLE)
+                        AlertTitle {"Saved"}
+                        AlertDescription {"Your changes are kept."}
+                    }
+                    Alert(live = false) {
+                        AlertTitle {"Built in"}
+                    }
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let own = text_box(&stage, "Saved");
+    let description = text_box(&stage, "Your changes are kept.");
+    let built_in = text_box(&stage, "Built in");
+    assert!(
+        (own.origin.x.0 - built_in.origin.x.0).abs() <= SLACK,
+        "a title after a child icon starts at {} and one after the built-in icon at {}",
+        own.origin.x.0,
+        built_in.origin.x.0
+    );
+    assert!(
+        (own.origin.x.0 - description.origin.x.0).abs() <= SLACK,
+        "the title and the description do not line up"
+    );
+}
+
+#[test]
+fn a_sidebar_separator_is_inset_and_does_not_widen_the_content() {
+    let mut stage = Stage::open(SHEET, move || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                SidebarProvider(shortcut = false) {
+                    Sidebar(label = "Nav") {
+                        SidebarContent {
+                            SidebarGroup { SidebarGroupLabel {"A"} }
+                            SidebarSeparator()
+                            SidebarGroup { SidebarGroupLabel {"B"} }
+                        }
+                    }
+                    SidebarInset { text {"Main"} }
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    // The smallest box holding both groups is the content.
+    let census = stage.census();
+    let content = census.control("AB").expect("the content is laid out");
+    let panel = content.rect.expect("the content has a box");
+    let line = census
+        .nodes
+        .iter()
+        .filter(|seen| seen.id != content.id && stage.handles().host.contains(content.id, seen.id))
+        .filter_map(|seen| seen.rect)
+        .find(|rect| (rect.size.height.0 - 1.0).abs() < 0.01)
+        .expect("the separator is a one-pixel line in the content");
+    assert!(
+        (line.origin.x.0 - panel.origin.x.0 - 8.0).abs() <= SLACK
+            && (right(panel) - right(line) - 8.0).abs() <= SLACK,
+        "the separator spans {}..{} in content {}..{}, and is meant to be inset 8px each side",
+        line.origin.x.0,
+        right(line),
+        panel.origin.x.0,
+        right(panel)
+    );
+}
+
+#[test]
+fn a_navigation_menu_keeps_its_own_height_in_a_column() {
+    let menu = NodeRef::new();
+    let mut stage = Stage::open(SHEET, move || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                column(style:min-height = "400px") {
+                    Button {"Above"}
+                    NavigationMenu(label = "Main", node_ref = menu) {
+                        NavigationMenuList {
+                            NavigationMenuItem(value = "a") {
+                                NavigationMenuTrigger {"Section"}
+                                NavigationMenuContent { NavigationMenuLink {"x"} }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let root = own_box(&stage, menu);
+    let trigger = text_box(&stage, "Section");
+    assert!(
+        root.size.height.0 < 60.0 && bottom(root) >= bottom(trigger),
+        "the menu is {}px tall in a 400px column",
+        root.size.height.0
+    );
+}
