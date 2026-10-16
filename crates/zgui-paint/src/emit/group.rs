@@ -24,7 +24,7 @@
 use zgui_geom::{Device, DevicePx, Point, Rect, Size};
 use zgui_layout::{Fragment, FragmentFlags};
 use zgui_profile::{Counter, counter};
-use zgui_scene::{BackdropFilter, ClipId, GroupBoundary, Scene, SpatialId};
+use zgui_scene::{BackdropFilter, ClipId, ClipLink, GroupBoundary, Scene, SpatialId};
 
 use crate::lower::PaintStyle;
 
@@ -179,9 +179,13 @@ pub fn close(scene: &mut Scene, boundary: &GroupBoundary) {
 ///
 /// It is pushed *before* the group's own content, because what it reads is what is under the group
 /// and not what the group draws.
+///
+/// The filtered result is cut to the rounded border box, as the box's background is. `computed` is
+/// the box's computed style, which gives the radii.
 pub fn backdrop(
     scene: &mut Scene,
     style: &PaintStyle,
+    computed: &zgui_css::ComputedStyle,
     fragment: &Fragment,
     clip: ClipId,
     shaders: &dyn crate::content::shader::ShaderSource,
@@ -206,6 +210,22 @@ pub fn backdrop(
     }
     // The border box is in the box's own coordinate system, as every other rectangle it paints.
     let space = fragment.transform.filter(|id| *id != SpatialId::VIEWPORT);
+    let radii = crate::lower::border::radii_of(computed, fragment.border_box, scale);
+    let corners = ClipLink::shaped(
+        fragment.border_box,
+        radii,
+        style.corner_shape,
+        space.unwrap_or(SpatialId::VIEWPORT),
+    );
+    // The clip is unnamed: the box owner's name is the clip it gives its children. A replay
+    // re-interns a noted clip at the position the content moved to.
+    let clip = if corners.is_rounded() {
+        let rounded = scene.clips.push(clip, corners);
+        scene.note_minted_clip(rounded);
+        rounded
+    } else {
+        clip
+    };
     let filter = BackdropFilter::new(fragment.border_box, filters)
         .clipped(clip)
         .in_space(space);
@@ -384,6 +404,7 @@ mod tests {
         let pushed = super::backdrop(
             &mut scene,
             &style,
+            &StyleDraft::initial().build(),
             &fragment,
             zgui_scene::ClipId::ROOT,
             &crate::content::shader::NoShaders,

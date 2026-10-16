@@ -1065,6 +1065,7 @@ impl stacking::Visitor for Pass<'_, '_> {
             self.report.primitives += group::backdrop(
                 self.scene,
                 &style,
+                &node.style,
                 fragment,
                 fragment.clip,
                 self.input.shaders,

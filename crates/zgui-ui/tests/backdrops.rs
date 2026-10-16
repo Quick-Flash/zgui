@@ -90,3 +90,62 @@ fn a_transformed_backdrop_blurs_where_the_transform_puts_its_box() {
         "the place layout put the box is blurred: {left} of its pixels are grey"
     );
 }
+
+/// The stripes, and a blurring box with round corners where layout put it.
+const ROUNDED: &str = ":root { background-color: #ffffff }
+     .field { position: relative; display: flex; flex-direction: row; width: 400px; height: 120px; margin: 40px }
+     .stripe { width: 4px; height: 120px; background-color: #ffffff }
+     .stripe.dark { background-color: #000000 }
+     .frost {
+        position: absolute; left: 20px; top: 20px; width: 80px; height: 80px;
+        border-radius: 30px;
+        backdrop-filter: blur(6px);
+     }";
+
+#[test]
+fn a_rounded_backdrop_leaves_what_is_outside_its_corners_alone() {
+    let field = NodeRef::new();
+    let Some(stage) = Stage::open(ROUNDED, move || {
+        let stripes: Vec<AnyView> = (0..STRIPES)
+            .map(|index| {
+                let class = if index % 2 == 0 {
+                    "stripe dark"
+                } else {
+                    "stripe"
+                };
+                AnyView::new(view! { box(class = class) })
+            })
+            .collect();
+        AnyView::new(view! {
+            box(class = "field", node_ref = field) {
+                {stripes}
+                box(class = "frost")
+            }
+        })
+    }) else {
+        eprintln!("skipped: no usable graphics device");
+        return;
+    };
+    let node = field.get_untracked().expect("the field is built");
+    let origin = stage.rect_of(node).origin;
+    let at = |x: f32, y: f32, side: f32| {
+        Rect::new(
+            Point::new(DevicePx(origin.x.0 + x), DevicePx(origin.y.0 + y)),
+            Size::new(DevicePx(side), DevicePx(side)),
+        )
+    };
+
+    let middle = greys(&stage, inner(origin, 20.0, 20.0, 80.0));
+    assert!(
+        middle > 0.9,
+        "the box is blurred: {middle} of its pixels are grey"
+    );
+    // Each square is inside the border box and outside the 30-pixel corner curve.
+    for (x, y) in [(20.0, 20.0), (94.0, 20.0), (20.0, 94.0), (94.0, 94.0)] {
+        let corner = greys(&stage, at(x, y, 6.0));
+        assert_eq!(
+            corner, 0.0,
+            "the corner at {x}, {y} is outside the curve and keeps its stripes"
+        );
+    }
+}
