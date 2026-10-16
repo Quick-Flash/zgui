@@ -415,6 +415,24 @@ fn a_sheet_says_which_edge_it_came_in_from_and_a_drawer_always_says_bottom() {
 }
 
 #[test]
+fn only_a_drawer_from_the_bottom_mounts_its_grab_handle() {
+    let harness = Harness::open();
+    harness.mount(|| {
+        view! {
+            Drawer(default_open = true) {
+                DrawerContent(direction = SheetSide::Right) {DrawerTitle {"Filters"}}
+            }
+        }
+    });
+
+    expect(&harness, "zui-drawer");
+    assert!(
+        find(&harness, "zui-drawer__handle").is_none(),
+        "a drawer down the side cannot be pulled, so it has no handle"
+    );
+}
+
+#[test]
 fn two_modal_surfaces_hold_the_scroll_lock_between_them() {
     // The count is what stops the inner one closing from unlocking the window the outer one is
     // still open over.
