@@ -70,6 +70,9 @@ pub struct LayoutTree<'a, C> {
     ///
     /// A worker's list is merged into the store's when its batch finishes.
     touched: Vec<(BoxKey, cephal::Layout)>,
+    /// Boxes a batch worker's probes noted, merged into [`LayoutStore`]'s list when the batch
+    /// finishes. An exclusive pass notes them on the store directly.
+    probed: Vec<BoxKey>,
 }
 
 impl<'a, C: MeasureContent> LayoutTree<'a, C> {
@@ -90,6 +93,7 @@ impl<'a, C: MeasureContent> LayoutTree<'a, C> {
             generation: 0,
             speculation: 0,
             touched: Vec::new(),
+            probed: Vec::new(),
         }
     }
 
@@ -132,6 +136,16 @@ impl<'a, C: MeasureContent> LayoutTree<'a, C> {
             {
                 break;
             }
+        }
+        // After every pass that may probe, so the forms paint reads are on the kept lines.
+        crate::inline::kept::restore(self.store.get_mut(), self.content);
+        if crate::invariants::enabled() {
+            let mismatched = crate::inline::kept::mismatched(self.store.get(), self.content);
+            assert!(
+                mismatched.is_empty(),
+                "text forms off their kept break after layout: {}",
+                crate::inline::kept::describe(self.store.get(), &mismatched)
+            );
         }
         let touched = core::mem::take(&mut self.touched);
         let store = self.store.get_mut();
@@ -214,6 +228,19 @@ impl<'a, C> LayoutTree<'a, C> {
     /// The same, for writing.
     pub(crate) fn state_mut(&mut self, key: BoxKey) -> &mut crate::tree::store::state::BoxLayout {
         self.store.state_mut(key)
+    }
+
+    /// Notes that a size probe broke `key`'s lines, once per box until the pass restores it.
+    pub(crate) fn note_probed(&mut self, key: BoxKey) {
+        let state = self.store.state_mut(key);
+        if state.probed {
+            return;
+        }
+        state.probed = true;
+        match &mut self.store {
+            view::StoreView::Exclusive(store) => store.probed.push(key),
+            view::StoreView::Worker(_) => self.probed.push(key),
+        }
     }
 
     /// The flattened form one box is holding.

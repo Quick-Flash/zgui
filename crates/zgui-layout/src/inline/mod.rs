@@ -34,6 +34,7 @@ pub(crate) mod content;
 pub mod ellipsis;
 pub mod floats;
 pub(crate) mod insets;
+pub mod kept;
 pub mod leaf_shell;
 pub mod lines;
 pub(crate) mod measure;
@@ -73,17 +74,15 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
     block: Option<&mut BlockContext<'_>>,
 ) -> Measured {
     let key = from_node_id(node);
+    // A speculative pass asks for a whole layout to read a baseline or a float's extent from it,
+    // and the engine keeps none of it. Its answer is a probe here, so it writes nothing.
+    let final_pass =
+        run_mode == RunMode::PerformLayout && cephal::tree::CacheAccess::speculation(tree) == 0;
     if tree.structure().node(key).fc == FormattingContext::Custom {
         // A custom element's measurement is the trait's, not the measurer's: the source was
         // installed on the pass, and the shell arithmetic around this call applies to its answer
         // exactly as it applies to a replaced box's.
-        return crate::custom::measure(
-            tree,
-            key,
-            known,
-            available,
-            run_mode == RunMode::PerformLayout,
-        );
+        return crate::custom::measure(tree, key, known, available, final_pass);
     }
     if tree.structure().node(key).fc == FormattingContext::Inline {
         return measure::compute(
@@ -94,7 +93,7 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
                 available,
                 run_mode,
                 axis,
-                final_pass: run_mode == RunMode::PerformLayout,
+                final_pass,
                 basis_height,
             },
             block,
@@ -113,7 +112,7 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
         available,
         natural,
         scale,
-        final_pass: run_mode == RunMode::PerformLayout,
+        final_pass,
     })
 }
 

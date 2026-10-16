@@ -22,7 +22,7 @@ use zgui_text::{
     BreakRequest, BrokenParagraph, Brush, ContentWidths, ParagraphContent, ParagraphKey,
     ShapedClusters, StrutMetrics,
 };
-use zgui_text_style::{TextPaint, TextStyle};
+use zgui_text_style::{BreakingKey, TextPaint, TextStyle};
 
 /// What is being asked of the content, and under what constraints.
 #[derive(Clone, Copy, Debug)]
@@ -142,6 +142,16 @@ pub trait MeasureContent: ShapedClusters {
     /// it answers to everything.
     fn break_lines(&mut self, key: ParagraphKey, request: &BreakRequest<'_>) -> BrokenParagraph;
 
+    /// Which break the shaped form of the paragraph `key` currently reflects.
+    ///
+    /// `None` when the measurer holds no such paragraph or keeps no laid-out form. A measurer that
+    /// forwards to another must forward this too: `None` stops the layout pass from putting a form
+    /// back on its kept lines after a probe moved it.
+    fn breaks_reflect(&self, key: ParagraphKey) -> Option<BreakingKey> {
+        let _ = key;
+        None
+    }
+
     /// The strut of a block whose root text style is `style`.
     ///
     /// Asked for separately from shaping because a block establishes a strut whether or not it
@@ -227,6 +237,10 @@ impl MeasureContent for Box<dyn WorkerMeasure> {
 
     fn break_lines(&mut self, key: ParagraphKey, request: &BreakRequest<'_>) -> BrokenParagraph {
         (**self).break_lines(key, request)
+    }
+
+    fn breaks_reflect(&self, key: ParagraphKey) -> Option<BreakingKey> {
+        (**self).breaks_reflect(key)
     }
 
     fn strut(&mut self, style: &TextStyle) -> StrutMetrics {

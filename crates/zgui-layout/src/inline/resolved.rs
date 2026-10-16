@@ -58,6 +58,9 @@ pub struct InlineResolution {
     ///
     /// Empty for a context that holds no nested inline box.
     pub slices: Vec<InlineSlice>,
+    /// The request the lines were broken under, which the shaped form is put back on after a
+    /// probe moves it.
+    pub(crate) kept: crate::inline::kept::KeptBreak,
 }
 
 impl InlineResolution {

@@ -129,6 +129,14 @@ impl LayoutStore {
         reclaimed
     }
 
+    /// How many current inline resolutions name one paragraph.
+    pub(crate) fn paragraph_users(&self, id: ParagraphId) -> u32 {
+        self.paragraphs
+            .get(id.index() as usize)
+            .and_then(Option::as_ref)
+            .map_or(0, |entry| entry.users)
+    }
+
     pub(crate) fn retain_paragraph(&mut self, id: ParagraphId) {
         if let Some(Some(entry)) = self.paragraphs.get_mut(id.index() as usize) {
             if entry.users == 0 {

@@ -91,6 +91,10 @@ pub struct LayoutStore {
     pub(crate) generation: u32,
     /// Boxes whose unrounded result was written this pass, with the result they held before.
     pub(crate) touched: Vec<(BoxKey, cephal::Layout)>,
+    /// Boxes whose shaped form a size probe may have moved off the kept lines.
+    ///
+    /// See [`kept`](crate::inline::kept). Drained at the end of each layout pass.
+    pub(crate) probed: Vec<BoxKey>,
     /// Boxes whose unrounded result moved in the last pass.
     changed: Vec<BoxKey>,
     /// Boxes carrying the chain bit, see [`crate::tree::dirty`].
@@ -183,6 +187,7 @@ impl LayoutStore {
             scheduler: cephal::schedule::Scheduler::new(),
             generation: 1,
             touched: Vec::new(),
+            probed: Vec::new(),
             changed: Vec::new(),
             chain: Vec::new(),
             root: None,

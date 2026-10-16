@@ -98,6 +98,9 @@ counters! {
     /// Paragraphs broken into lines again while reusing the shaping they already had.
     TextRebroken => text_rebroken, Group::BackendNeutral;
 
+    /// Shaped paragraphs broken back to their kept lines after a size probe moved them.
+    TextFormsRestored => text_forms_restored, Group::BackendNeutral;
+
     /// Fragments compared against their previous geometry.
     FragmentsDiffed => fragments_diffed, Group::BackendNeutral;
 

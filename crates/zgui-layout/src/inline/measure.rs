@@ -26,6 +26,7 @@ use zgui_text::{BreakRequest, LineBand, LineBands, ParagraphContent};
 use std::sync::Arc;
 
 use crate::inline::content::{Generated, Role};
+use crate::inline::kept::KeptBreak;
 use crate::inline::lines::LineBox;
 use crate::inline::resolved::{InlineResolution, Placement};
 use crate::inline::vertical_align::scale_strut;
@@ -247,13 +248,17 @@ pub(crate) fn compute<C: MeasureContent>(
         Constraint::MaxContent => None,
     };
 
+    // A probe that breaks may move the shaper's laid-out form, which the glyphs are drawn from.
+    // The end of the layout pass moves it back to the kept break; see `kept`.
+    if !ask.final_pass {
+        tree.note_probed(key);
+    }
+
     // A pass whose answer is not the one that will be kept, on a context with nothing on its lines
     // that has to be placed twice and no float to band around, is one break and one line-box
-    // computation and nothing else. Answered here so that it writes nothing: it neither moves the
-    // shaper's laid-out form — which is what the paragraph's glyphs are drawn from — nor replaces
-    // the resolution the last kept pass left behind. Both of those would be a measurement taken at
-    // a candidate width becoming what the box is painted as. What it computed is kept for the
-    // pass that will.
+    // computation and nothing else. Answered here so that it does not replace the resolution the
+    // last kept pass left behind: that would make a measurement taken at a candidate width what
+    // the box is painted as. What it computed is kept for the pass that will.
     if !ask.final_pass && !boxes.needs_line_box() && !floats::any_floats(block.as_deref()) {
         let request = BreakRequest {
             runs: &generated.runs,
@@ -308,9 +313,8 @@ pub(crate) fn compute<C: MeasureContent>(
             max_advance,
             indent_basis: max_advance,
             bands: LineBands::new(&bands),
-            // A probe that reaches this loop — a line-box-aligned atomic, a float — still must
-            // not move the shaper's laid-out form: that form is what the kept pass's glyphs are
-            // drawn from.
+            // A probe that reaches this loop — a line-box-aligned atomic, a float — may be
+            // answered from a remembered break.
             probe: !ask.final_pass,
         };
         broken = tree.content().break_lines(summary.key, &request);
@@ -363,6 +367,12 @@ pub(crate) fn compute<C: MeasureContent>(
         bands = next;
     }
 
+    // The form reflects the kept break now, so its key is read rather than hashed again.
+    let kept_key = if ask.final_pass {
+        tree.content().breaks_reflect(summary.key)
+    } else {
+        None
+    };
     let placements = place(
         tree,
         key,
@@ -411,6 +421,14 @@ pub(crate) fn compute<C: MeasureContent>(
         sources: generated.sources.clone(),
         ellipsis,
         slices,
+        kept: KeptBreak {
+            generated,
+            boxes: core::mem::take(&mut boxes.geometry),
+            max_advance,
+            indent_basis: max_advance,
+            bands,
+            key: kept_key,
+        },
     };
     let measured = Measured {
         size: Size {
