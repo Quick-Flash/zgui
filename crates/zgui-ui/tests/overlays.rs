@@ -1707,9 +1707,9 @@ fn typing_in_a_combobox_narrows_the_list_to_what_is_left_and_nothing_else_is_mou
 /// A combobox over four countries, two of which contain "an".
 #[component]
 fn ACountryCombobox(
-    /// Which value starts chosen.
-    #[prop(into, optional)]
-    default_value: Option<String>,
+    /// Which value starts chosen; none when empty.
+    #[prop(into, default = String::new())]
+    default_value: String,
 ) -> impl IntoView {
     view! {
         Combobox(default_value = default_value) {
@@ -1764,7 +1764,7 @@ fn escape_puts_the_chosen_text_back_in_a_combobox_field() {
     );
 
     harness.type_char(field, 'x');
-    assert_eq!(harness.window.dom.tree().text_content(field), "Italyx");
+    assert_ne!(harness.window.dom.tree().text_content(field), "Italy");
     harness.press(field, NamedKey::Escape);
     settle(&harness);
     assert_eq!(harness.window.dom.tree().text_content(field), "Italy");

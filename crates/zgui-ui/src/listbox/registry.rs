@@ -70,6 +70,8 @@ pub struct Listbox {
     value: Controllable<String>,
     /// What has been typed to narrow the list, for the controls that have a field.
     filter: RwSignal<String, LocalStorage>,
+    /// Whether the filter narrows the list: from the first keystroke until the query is reset.
+    query_active: RwSignal<bool, LocalStorage>,
     /// What each value reads as, learned from the options that say so.
     ///
     /// A closed select has no options mounted: they are its list, and its list is gone. Without
@@ -111,6 +113,7 @@ impl Listbox {
             resolved,
             value,
             filter: RwSignal::new_local(String::new()),
+            query_active: RwSignal::new_local(false),
             labels: ListboxLabels::new(),
             surface,
             dismisses: true,
@@ -154,6 +157,11 @@ impl Listbox {
     /// to choose, and the only thing wanted from it is the one thing only it can say.
     pub fn describe(&self, option: ListboxOption) {
         self.labels.learn(option);
+    }
+
+    /// Learns that `value` reads as `text`, for an option that knows its text without an element.
+    pub fn remember(&self, value: &str, text: &str) {
+        self.labels.remember(value, text);
     }
 
     /// Registers one option, and takes it out again when the calling scope goes away.
@@ -286,6 +294,8 @@ impl Listbox {
         if entry.option().is_disabled() {
             return;
         }
+        self.labels
+            .remember(entry.option().value(), &entry.option().text());
         self.choose(entry.option().value());
         entry.option().select();
         if self.dismisses {
@@ -305,15 +315,40 @@ impl Listbox {
     /// away is a highlight on nothing, and Enter would choose something the user cannot see.
     pub fn set_filter(&self, text: impl Into<String>) {
         self.filter.set(text.into());
+        if !self.query_active.get_untracked() {
+            self.query_active.set(true);
+        }
         self.ask(Active::First);
+    }
+
+    /// Whether something has been typed since the query was last reset.
+    #[must_use]
+    pub fn query_active(&self) -> bool {
+        self.query_active.get()
+    }
+
+    /// Ends the query: clears the filter, so every option survives it again.
+    ///
+    /// What a combobox does once its list has gone, so the next opening shows every option.
+    pub fn reset_query(&self) {
+        if self.filter.try_with_untracked(String::is_empty) == Some(false) {
+            self.filter.try_set(String::new());
+        }
+        if self.query_active.try_get_untracked() == Some(true) {
+            self.query_active.try_set(false);
+        }
     }
 
     /// Whether an option reading as `text` survives the filter.
     ///
     /// A substring rather than a prefix, and deliberately: a command palette is searched by any
-    /// word of a command, not only by how it starts.
+    /// word of a command, not only by how it starts. Every option survives while no query is
+    /// active.
     #[must_use]
     pub fn matches(&self, text: &str) -> bool {
+        if !self.query_active.get() {
+            return true;
+        }
         let filter = self.filter.get();
         filter.is_empty() || text.to_lowercase().contains(&filter.to_lowercase())
     }

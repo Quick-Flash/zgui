@@ -10,7 +10,7 @@ use zgui_ui_icons::set::mark::CHECK;
 
 use crate::combobox::SHEET;
 use crate::combobox::style::ComboboxStyle;
-use crate::listbox::{Listbox, ListboxOption, use_listbox_option};
+use crate::listbox::{Listbox, ListboxCatalogue, ListboxOption, use_listbox_option};
 use crate::select::{SHEET as SELECT_SHEET, SelectStyle};
 use crate::support::activate_on_press;
 
@@ -69,6 +69,14 @@ pub fn ComboboxItem(
     install_stylesheet(SELECT_SHEET, SelectStyle::CSS);
     let listbox = Listbox::current();
     let reads_as = text.unwrap_or_else(|| value.clone());
+    // In the catalogue of a closed list, it only says what its value reads as. Its text is known
+    // without an element, so it builds none.
+    if let Some(listbox) = listbox
+        && ListboxCatalogue::is_current()
+    {
+        listbox.remember(&value, &reads_as);
+        return AnyView::new(());
+    }
     let survives = {
         let reads_as = reads_as.clone();
         move || listbox.is_none_or(|listbox| listbox.matches(&reads_as))
@@ -76,7 +84,7 @@ pub fn ComboboxItem(
 
     let held = StoredValue::new_local((value, reads_as, on_select, class, attrs, children));
 
-    view! {
+    AnyView::new(view! {
         Show(when = survives, fallback = || ()) {
             {move || {
                 let (value, reads_as, on_select, class, attrs, children) = held.get_value();
@@ -94,7 +102,7 @@ pub fn ComboboxItem(
                 }
             }}
         }
-    }
+    })
 }
 
 /// The option itself, mounted only while its text survives the filter.

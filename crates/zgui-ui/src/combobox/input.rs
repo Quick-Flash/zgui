@@ -25,6 +25,9 @@ use zgui_ui_primitives::Binding;
 /// reader needs: what kind of surface it opens, whether that surface is showing, and which option
 /// is being walked.
 ///
+/// While the list is open and something has been typed, it shows what was typed. Otherwise it
+/// shows what the chosen option reads as.
+///
 /// ```
 /// # use zgui::prelude::*;
 /// # use zgui::{component, view};
@@ -69,9 +72,14 @@ pub fn ComboboxInput(
     );
 
     // The list owns what has been typed, so the field reads it from there and writes it back
-    // there rather than keeping a second copy that has to be kept in step.
+    // there rather than keeping a second copy that has to be kept in step. While no query is open,
+    // the field shows what the chosen option reads as.
     let typed = Binding::controlled(
-        Signal::derive_local(move || listbox.map(|listbox| listbox.filter()).unwrap_or_default()),
+        Signal::derive_local(move || match listbox {
+            Some(listbox) if state.is_open() && listbox.query_active() => listbox.filter(),
+            Some(listbox) => listbox.chosen_text().unwrap_or_default(),
+            None => String::new(),
+        }),
         move |text: String| {
             if let Some(listbox) = listbox {
                 listbox.set_filter(text);
