@@ -56,14 +56,16 @@ style! { pub InputStyle =>
 ":scope:disabled { opacity: 0.5; pointer-events: none; }"
 // `:empty` is *this field holds no text*, answered by the document itself: the element's only
 // children are the text nodes the editing model writes. Out of flow, so that it neither moves
-// the text nor pushes the insertion point along in front of it.
+// the text nor pushes the insertion point along in front of it. It covers the padding box and
+// inherits the field's padding, so it starts where the text starts after any restyle.
 ":scope:empty::before {
         content: var(--zui-field-placeholder, \"\");
         position: absolute;
         top: 0;
         bottom: 0;
-        left: 12px;
-        right: 12px;
+        left: 0;
+        right: 0;
+        padding: inherit;
         display: flex;
         flex-direction: row;
         align-items: center;
@@ -105,9 +107,10 @@ style! { pub TextareaStyle =>
 ":scope:empty::before {
         content: var(--zui-field-placeholder, \"\");
         position: absolute;
-        top: 8px;
-        left: 12px;
-        right: 12px;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: inherit;
         color: var(--zui-color-muted-foreground);
     }"
 }
