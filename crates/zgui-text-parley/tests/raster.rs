@@ -389,3 +389,102 @@ fn a_synthetic_slant_leans_the_tile_forward() {
         "the top of the stem leans right of its foot: {top} against {foot}"
     );
 }
+
+/// The first run of `text` shaped in the shipped variable face at `weight`, with the system it
+/// was shaped through.
+fn variable_run(fonts: &Arc<FontSystem>, weight: f32) -> zgui_text::ShapedRunOwned {
+    use zgui_text::{BreakRequest, ShapedRunOwned};
+
+    let mut shaper = zgui_text_parley::Shaper::with_controls(fonts.clone(), Controls::Verbatim);
+    let mut fixture = support::Fixture::new("HOW", Direction::LeftToRight);
+    fixture.runs[0].style = Arc::new(TextStyle {
+        family: FontFamilyList::from_iter([FamilyName::Named(Ident::new("Rubik"))]),
+        size: zgui_geom::CssPx(48.0),
+        weight,
+        ..TextStyle::initial()
+    });
+    let content = fixture.content();
+    let mut shaped = shaper.shape(&content);
+    shaper.break_lines(&mut shaped, &BreakRequest::new(&content, None));
+    let mut runs = Vec::new();
+    shaper.visit_line(&shaped, 0, &mut |run| runs.push(ShapedRunOwned::from(run)));
+    runs.into_iter().next().expect("one run")
+}
+
+/// The pixels a glyph covers, summed.
+fn ink(image: &GlyphImage) -> u64 {
+    image.bytes.iter().map(|byte| u64::from(*byte)).sum()
+}
+
+/// A variable face draws each weight at its own point on the `wght` axis: the runs name two
+/// instances, the glyphs are two cache entries, and the heavier one carries more ink.
+#[test]
+fn a_variable_face_draws_each_weight_at_its_own_instance() {
+    let fonts = Arc::new(FontSystem::new(FontSystemOptions::registered_only()));
+    fonts
+        .register(support::face("RubikSubset-Variable.ttf"), None)
+        .expect("the variable face registers");
+    let regular = variable_run(&fonts, 400.0);
+    let bold = variable_run(&fonts, 700.0);
+    assert_eq!(regular.face, bold.face, "one file, one face");
+    assert_ne!(
+        regular.instance, bold.instance,
+        "two weights of one variable face were shaped at one instance"
+    );
+    assert!(!bold.instance.is_default());
+    assert_eq!(bold.synthetic_bold, 0.0, "the weight comes from the axis");
+
+    let raster = Rasteriser::new(fonts);
+    let glyph = regular.glyphs[0];
+    let style = RasterStyle::Grayscale;
+    let light_key = regular
+        .as_run(zgui_scene::PaintSlot(0))
+        .key_for(glyph, 0.0, style);
+    let heavy_key = bold
+        .as_run(zgui_scene::PaintSlot(0))
+        .key_for(glyph, 0.0, style);
+    assert_ne!(light_key, heavy_key);
+    let light = raster.raster(&light_key).expect("a glyph");
+    let heavy = raster.raster(&heavy_key).expect("a glyph");
+    assert!(
+        ink(&heavy) > ink(&light) * 11 / 10,
+        "700 drew no heavier than 400: {} against {}",
+        ink(&heavy),
+        ink(&light)
+    );
+
+    let light_curves = raster
+        .outline(
+            &regular
+                .as_run(zgui_scene::PaintSlot(0))
+                .outline_key(glyph.glyph),
+        )
+        .expect("curves");
+    let heavy_curves = raster
+        .outline(
+            &bold
+                .as_run(zgui_scene::PaintSlot(0))
+                .outline_key(glyph.glyph),
+        )
+        .expect("curves");
+    assert!(
+        heavy_curves.bounding_box().width() > light_curves.bounding_box().width(),
+        "the heavier curves are no wider: {:?} against {:?}",
+        heavy_curves.bounding_box(),
+        light_curves.bounding_box()
+    );
+}
+
+/// A static face is drawn at the default instance, so its keys are the ones it always had.
+#[test]
+fn a_static_face_is_drawn_at_the_default_instance() {
+    let (fonts, mut shaper) = support::shaper(Controls::Verbatim);
+    let fixture = support::Fixture::new("H", Direction::LeftToRight);
+    let content = fixture.content();
+    let mut shaped = shaper.shape(&content);
+    shaper.break_lines(&mut shaped, &zgui_text::BreakRequest::new(&content, None));
+    let mut instances = Vec::new();
+    shaper.visit_line(&shaped, 0, &mut |run| instances.push(run.instance));
+    let _ = fonts;
+    assert_eq!(instances, vec![zgui_text::VariationInstance::DEFAULT]);
+}

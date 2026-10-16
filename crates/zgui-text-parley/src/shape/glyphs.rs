@@ -65,6 +65,7 @@ fn described<'a>(
     ShapedRun {
         face,
         size: text.font_size(),
+        instance: fonts.variation_instance(text.normalized_coords()),
         // The engine reports *whether* to embolden; how much is a rasterisation decision, and it
         // is the same one wherever a synthesised bold is drawn.
         synthetic_bold: if synthesis.embolden() {

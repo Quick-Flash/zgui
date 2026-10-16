@@ -9,6 +9,7 @@
 
 use crate::brush::Brush;
 use crate::font::face::FaceId;
+use crate::glyph::instance::VariationInstance;
 use crate::glyph::run::{ShapedGlyph, ShapedRun};
 
 /// One style-uniform run of one shaped line, owned.
@@ -27,6 +28,8 @@ pub struct ShapedRunOwned {
     pub face: FaceId,
     /// The size the run is drawn at, in device pixels.
     pub size: f32,
+    /// The point in a variable face's design space the glyphs are drawn at.
+    pub instance: VariationInstance,
     /// How much the glyphs are emboldened to stand in for a weight the face does not have, as a
     /// fraction of the size; zero when the face covers the requested weight.
     pub synthetic_bold: f32,
@@ -54,12 +57,15 @@ impl ShapedRunOwned {
     ///
     /// ```
     /// use zgui_scene::PaintSlot;
-    /// use zgui_text::{FaceId, RasterStyle, ShapedGlyph, ShapedRun, ShapedRunOwned};
+    /// use zgui_text::{
+    ///     FaceId, RasterStyle, ShapedGlyph, ShapedRun, ShapedRunOwned, VariationInstance,
+    /// };
     ///
     /// let glyph = ShapedGlyph { glyph: 9, x: 12.25, y: 0.0 };
     /// let owned = ShapedRunOwned {
     ///     face: FaceId(3),
     ///     size: 16.0,
+    ///     instance: VariationInstance::DEFAULT,
     ///     synthetic_bold: 0.0,
     ///     synthetic_slant: 0.0,
     ///     has_color: false,
@@ -69,6 +75,7 @@ impl ShapedRunOwned {
     /// let borrowed = ShapedRun {
     ///     face: FaceId(3),
     ///     size: 16.0,
+    ///     instance: VariationInstance::DEFAULT,
     ///     synthetic_bold: 0.0,
     ///     synthetic_slant: 0.0,
     ///     has_color: false,
@@ -90,6 +97,7 @@ impl ShapedRunOwned {
         ShapedRun {
             face: self.face,
             size: self.size,
+            instance: self.instance,
             synthetic_bold: self.synthetic_bold,
             synthetic_slant: self.synthetic_slant,
             has_color: self.has_color,
@@ -110,6 +118,7 @@ impl From<ShapedRun<'_>> for ShapedRunOwned {
         Self {
             face: run.face,
             size: run.size,
+            instance: run.instance,
             synthetic_bold: run.synthetic_bold,
             synthetic_slant: run.synthetic_slant,
             has_color: run.has_color,
@@ -121,7 +130,7 @@ impl From<ShapedRun<'_>> for ShapedRunOwned {
 
 #[cfg(test)]
 mod tests {
-    use super::ShapedRunOwned;
+    use super::{ShapedRunOwned, VariationInstance};
     use crate::font::face::FaceId;
     use crate::glyph::key::RasterStyle;
     use crate::glyph::run::{ShapedGlyph, ShapedRun};
@@ -132,6 +141,7 @@ mod tests {
         ShapedRunOwned {
             face: FaceId(3),
             size: 16.0,
+            instance: VariationInstance::DEFAULT,
             synthetic_bold: 0.0,
             synthetic_slant: 0.0,
             has_color: false,
@@ -165,6 +175,7 @@ mod tests {
         let fresh = ShapedRun {
             face: owned.face,
             size: owned.size,
+            instance: owned.instance,
             synthetic_bold: owned.synthetic_bold,
             synthetic_slant: owned.synthetic_slant,
             has_color: owned.has_color,
@@ -192,6 +203,7 @@ mod tests {
         let run = ShapedRun {
             face: FaceId(1),
             size: 12.0,
+            instance: VariationInstance::DEFAULT,
             synthetic_bold: 0.02,
             synthetic_slant: 8.0,
             has_color: true,

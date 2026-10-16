@@ -172,11 +172,12 @@ impl ShapedRun<'_> {
     ///
     /// ```
     /// use zgui_scene::PaintSlot;
-    /// use zgui_text::{FaceId, RasterPath, RunSurface, ShapedRun};
+    /// use zgui_text::{FaceId, RasterPath, RunSurface, ShapedRun, VariationInstance};
     ///
     /// let run = ShapedRun {
     ///     face: FaceId(0),
     ///     size: 160.0,
+    ///     instance: VariationInstance::DEFAULT,
     ///     synthetic_bold: 0.0,
     ///     synthetic_slant: 0.0,
     ///     has_color: false,

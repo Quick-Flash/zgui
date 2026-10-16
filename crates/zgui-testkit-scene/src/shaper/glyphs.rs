@@ -115,6 +115,7 @@ fn emit(
     visit(ShapedRun {
         face: FACE,
         size,
+        instance: zgui_text::VariationInstance::DEFAULT,
         synthetic_bold: 0.0,
         synthetic_slant: 0.0,
         has_color: false,

@@ -157,6 +157,7 @@ pub(crate) fn shape(
         runs.push(ShapedRunOwned {
             face,
             size: text_run.font_size(),
+            instance: fonts.variation_instance(text_run.normalized_coords()),
             synthetic_bold: if synthesis.embolden() {
                 SYNTHETIC_BOLD_RATIO
             } else {

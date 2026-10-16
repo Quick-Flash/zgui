@@ -90,6 +90,7 @@ impl CustomElement for Label {
         let run = ShapedRun {
             face: FaceId(0),
             size: 16.0,
+            instance: zgui_custom::VariationInstance::DEFAULT,
             synthetic_bold: 0.0,
             synthetic_slant: 0.0,
             has_color: false,
