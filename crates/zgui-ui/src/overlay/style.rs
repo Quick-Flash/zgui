@@ -63,6 +63,7 @@ style! { pub OverlayStyle =>
         color: var(--zui-surface-ink, var(--zui-color-popover-foreground));
         box-shadow: var(--zui-surface-shadow, var(--zui-shadow-md));
         transform-origin: var(--zui-surface-origin-x, center) var(--zui-surface-origin-y, center);
+        transform: var(--zui-surface-place, none);
     }"
 
     // # How a surface enters and leaves
@@ -81,7 +82,9 @@ style! { pub OverlayStyle =>
     // reasons to carry a transform — the placement it owns, which for a dialog is the half of its
     // own size it pulls itself back by, and the entrance every surface shares — and a keyframe
     // that wrote `transform` outright would drop the first, hanging the dialog below and right of
-    // the centre by half its size for as long as the animation ran.
+    // the centre by half its size for as long as the animation ran. The resting rule above states
+    // the placement too, because an entrance of no length never starts and `animation: none` has no
+    // keyframes: in both, the resting transform is the one that applies.
     ".zui-surface {
         animation: zui-surface-enter var(--zui-surface-enter-duration, var(--zui-motion-duration-normal))
             var(--zui-surface-enter-ease, ease) both;

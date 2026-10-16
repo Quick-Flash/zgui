@@ -330,6 +330,28 @@ fn a_dialog_opened_again_is_centred_again() {
     }
 }
 
+/// A dialog whose entrance takes no time at all, as a theme with its motion turned off has it.
+const INSTANT: &str = "box.zui-dialog { --zui-surface-enter-duration: 0ms }";
+
+/// A dialog with no animation at all.
+const STILL: &str = "box.zui-dialog { animation: none }";
+
+#[test]
+fn a_dialog_with_an_instant_entrance_is_centred() {
+    // An animation of no length never starts, so a value that only the keyframes state never
+    // applies. The placement has to be in the surface's own declarations too.
+    let mut stage = staged!(&format!("{SHEET}\n{INSTANT}"));
+    open(&mut stage);
+    assert_centred(panel(&stage), SLACK, "instant entrance");
+}
+
+#[test]
+fn a_dialog_with_no_animation_is_centred() {
+    let mut stage = staged!(&format!("{SHEET}\n{STILL}"));
+    open(&mut stage);
+    assert_centred(panel(&stage), SLACK, "no animation");
+}
+
 /// A theme's entry motion, set on the surface alone: grow out of the bottom right corner from half
 /// the size, with no slide and no fade, slowly enough that the readings below are all part way.
 ///
