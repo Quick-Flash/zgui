@@ -130,7 +130,10 @@ impl Plot {
         let gaps = (series_count - 1) as f64;
         let gap = (inner * 0.1 / gaps).min(BAR_GAP);
         let width = (inner - gap * gaps) / series_count as f64;
-        (first + series.min(series_count - 1) as f64 * (width + gap), width)
+        (
+            first + series.min(series_count - 1) as f64 * (width + gap),
+            width,
+        )
     }
 }
 
@@ -473,18 +476,26 @@ mod tests {
     fn the_bars_of_several_series_share_their_band_side_by_side() {
         let plot = Plot::new(300.0, 200.0);
         let (start, band) = plot.band(1, 4);
-        let slots: Vec<(f64, f64)> = (0..3).map(|series| plot.bar_slot(1, 4, series, 3)).collect();
+        let slots: Vec<(f64, f64)> = (0..3)
+            .map(|series| plot.bar_slot(1, 4, series, 3))
+            .collect();
         for pair in slots.windows(2) {
             let gap = pair[1].0 - (pair[0].0 + pair[0].1);
             assert!(gap > 0.0 && gap <= 4.0, "two neighbours are {gap}px apart");
         }
-        assert!((slots[0].0 - (start + band * 0.1)).abs() < 1e-9, "the first starts the 80%");
+        assert!(
+            (slots[0].0 - (start + band * 0.1)).abs() < 1e-9,
+            "the first starts the 80%"
+        );
         let (last, width) = slots[2];
         assert!(
             (last + width - (start + band * 0.9)).abs() < 1e-9,
             "the last ends the 80%"
         );
-        assert!(slots.iter().all(|slot| (slot.1 - width).abs() < 1e-9), "all one width");
+        assert!(
+            slots.iter().all(|slot| (slot.1 - width).abs() < 1e-9),
+            "all one width"
+        );
     }
 
     #[test]

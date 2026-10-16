@@ -329,7 +329,11 @@ fn value_labels(plot: &Plot, scale: &Scale, ticks: &[f64]) -> Vec<AnyView> {
 /// The category axis' labels: one under the middle of each band, from `run`'s measurements.
 fn category_labels(plot: &Plot, run: &Series) -> AnyView {
     let count = run.points.len();
-    let longest = run.points.iter().map(|point| point.label.chars().count()).max();
+    let longest = run
+        .points
+        .iter()
+        .map(|point| point.label.chars().count())
+        .max();
     let (_, band) = plot.band(0, count);
     let step = category_step(band, longest.unwrap_or(0));
     let top = plot.y1() + CATEGORY_GAP;

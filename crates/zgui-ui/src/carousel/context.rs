@@ -328,13 +328,19 @@ mod tests {
     #[test]
     fn slides_wider_than_the_track_keep_the_last_one_reachable() {
         let found = reach(&[0.0, 400.0, 640.0], 1040.0, 336.0);
-        assert_eq!(found.last, 2, "the last slide starts short of the full travel");
+        assert_eq!(
+            found.last, 2,
+            "the last slide starts short of the full travel"
+        );
     }
 
     #[test]
     fn a_rounding_error_does_not_cost_a_step() {
         let found = reach(&[0.0, 112.0, 223.7, 336.0], 448.0, 224.0);
-        assert_eq!(found.last, 2, "a start within half a pixel of the travel is the last");
+        assert_eq!(
+            found.last, 2,
+            "a start within half a pixel of the travel is the last"
+        );
     }
 
     #[test]

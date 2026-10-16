@@ -65,7 +65,12 @@ impl zgui::render::Renderer for Recorder {
             })
             .collect();
         frame.extend(primitives.marks.iter().map(|mark| bounds(mark.bounds)));
-        frame.extend(primitives.mono_sprites.iter().map(|sprite| bounds(sprite.bounds)));
+        frame.extend(
+            primitives
+                .mono_sprites
+                .iter()
+                .map(|sprite| bounds(sprite.bounds)),
+        );
         *SIZES.lock().expect("the log is not poisoned") = frame;
         zgui::render::FrameOutcome::Presented(zgui::render::FrameStats::default())
     }

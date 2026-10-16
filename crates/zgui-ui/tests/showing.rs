@@ -428,7 +428,10 @@ fn a_carousel_of_thirds_stops_with_its_last_slide_against_the_trailing_edge() {
     let mut stage = staged!(thirds(&built, 5));
     let start = showing_of(&mut stage, &built, 5);
     let first = start[0].expect("the first slide shows to begin with");
-    assert!(start[2].is_some() && start[3].is_none(), "three slides fit the rail: {start:?}");
+    assert!(
+        start[2].is_some() && start[3].is_none(),
+        "three slides fit the rail: {start:?}"
+    );
 
     let [_, on] = arrows(&stage, built.node(RAIL));
     for _ in 0..2 {
@@ -441,13 +444,19 @@ fn a_carousel_of_thirds_stops_with_its_last_slide_against_the_trailing_edge() {
         (third - first).abs() < 1.0,
         "two steps put the third slide at {third}, where the first was at {first}"
     );
-    assert!(end[4].is_some(), "and the last slide is on the screen: {end:?}");
+    assert!(
+        end[4].is_some(),
+        "and the last slide is on the screen: {end:?}"
+    );
 
     // The last slide is against the trailing edge, so a further press has nowhere to go.
     stage.click(stage.centre_of(on));
     stage.wait(SETTLED);
     let after = showing_of(&mut stage, &built, 5);
-    assert_eq!(after, end, "a press past the last reachable slide moved the strip");
+    assert_eq!(
+        after, end,
+        "a press past the last reachable slide moved the strip"
+    );
 }
 
 #[test]
@@ -455,12 +464,19 @@ fn a_carousel_whose_slides_all_fit_does_not_step() {
     let built = Built::default();
     let mut stage = staged!(thirds(&built, 3));
     let start = showing_of(&mut stage, &built, 3);
-    assert!(start.iter().all(Option::is_some), "every slide fits: {start:?}");
+    assert!(
+        start.iter().all(Option::is_some),
+        "every slide fits: {start:?}"
+    );
 
     let [_, on] = arrows(&stage, built.node(RAIL));
     stage.click(stage.centre_of(on));
     stage.wait(SETTLED);
-    assert_eq!(showing_of(&mut stage, &built, 3), start, "a press moved a strip that fits");
+    assert_eq!(
+        showing_of(&mut stage, &built, 3),
+        start,
+        "a press moved a strip that fits"
+    );
 }
 
 // ---- a select's chosen option -----------------------------------------------------------------

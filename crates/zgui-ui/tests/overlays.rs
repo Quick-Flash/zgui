@@ -400,13 +400,22 @@ fn a_disabled_answer_shows_as_disabled_and_leaves_its_dialog_open() {
         harness.click(node);
         settle(&harness);
     }
-    assert!(open.get_untracked(), "a disabled answer closed the alert dialog");
-    assert!(closed.get_untracked(), "a disabled close control closed the dialog");
+    assert!(
+        open.get_untracked(),
+        "a disabled answer closed the alert dialog"
+    );
+    assert!(
+        closed.get_untracked(),
+        "a disabled close control closed the dialog"
+    );
 
     pending.set(false);
     settle(&harness);
     harness.click(answer("Delete"));
-    assert!(!open.get_untracked(), "the answer closes the dialog once it is enabled");
+    assert!(
+        !open.get_untracked(),
+        "the answer closes the dialog once it is enabled"
+    );
     harness.click(answer("Cancel"));
     assert!(!closed.get_untracked(), "and so does the close control");
 }
@@ -1693,6 +1702,72 @@ fn typing_in_a_combobox_narrows_the_list_to_what_is_left_and_nothing_else_is_mou
         find(&harness, "zui-combobox__empty").is_some(),
         "and it says so"
     );
+}
+
+/// A combobox over four countries, two of which contain "an".
+#[component]
+fn ACountryCombobox(
+    /// Which value starts chosen.
+    #[prop(into, optional)]
+    default_value: Option<String>,
+) -> impl IntoView {
+    view! {
+        Combobox(default_value = default_value) {
+            ComboboxInput(placeholder = "Search", label = "Country")
+            ComboboxContent {
+                ComboboxItem(value = "de", text = "Germany") {"Germany"}
+                ComboboxItem(value = "fr", text = "France") {"France"}
+                ComboboxItem(value = "ie", text = "Ireland") {"Ireland"}
+                ComboboxItem(value = "it", text = "Italy") {"Italy"}
+            }
+        }
+    }
+}
+
+#[test]
+fn a_combobox_field_shows_the_text_of_what_was_chosen() {
+    let harness = Harness::open();
+    harness.mount(|| view! { ACountryCombobox() });
+    let field = harness.find("zui-combobox__input");
+
+    harness.type_char(field, 'a');
+    harness.type_char(field, 'n');
+    let left = every(&harness, "zui-select__item");
+    assert_eq!(left.len(), 3, "Germany, France and Ireland contain `an`");
+    harness.click(left[0]);
+    settle(&harness);
+
+    assert!(
+        find(&harness, "zui-combobox__list").is_none(),
+        "choosing closed the list"
+    );
+    assert_eq!(harness.window.dom.tree().text_content(field), "Germany");
+
+    harness.press(field, NamedKey::ArrowDown);
+    assert_eq!(
+        every(&harness, "zui-select__item").len(),
+        4,
+        "the list opened again shows every option"
+    );
+    assert_eq!(harness.window.dom.tree().text_content(field), "Germany");
+}
+
+#[test]
+fn escape_puts_the_chosen_text_back_in_a_combobox_field() {
+    let harness = Harness::open();
+    harness.mount(|| view! { ACountryCombobox(default_value = "it") });
+    let field = harness.find("zui-combobox__input");
+    assert_eq!(
+        harness.window.dom.tree().text_content(field),
+        "Italy",
+        "a value chosen before the list ever opened reads as its option's text"
+    );
+
+    harness.type_char(field, 'x');
+    assert_eq!(harness.window.dom.tree().text_content(field), "Italyx");
+    harness.press(field, NamedKey::Escape);
+    settle(&harness);
+    assert_eq!(harness.window.dom.tree().text_content(field), "Italy");
 }
 
 #[test]

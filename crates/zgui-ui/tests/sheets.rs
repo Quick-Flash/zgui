@@ -54,8 +54,14 @@ struct Payment {
 
 fn payments() -> Vec<Payment> {
     vec![
-        Payment { email: "ken@example.com", amount: "$316.00" },
-        Payment { email: "abe@example.com", amount: "$242.00" },
+        Payment {
+            email: "ken@example.com",
+            amount: "$316.00",
+        },
+        Payment {
+            email: "abe@example.com",
+            amount: "$242.00",
+        },
     ]
 }
 
@@ -280,7 +286,11 @@ fn a_leading_icon_before_a_bare_label_keeps_the_full_gap() {
 fn revenue() -> Vec<Series> {
     vec![Series::new(
         "Revenue",
-        vec![Datum::new("Jan", 42_100.0), Datum::new("Feb", 77_800.0), Datum::new("Mar", 51_000.0)],
+        vec![
+            Datum::new("Jan", 42_100.0),
+            Datum::new("Feb", 77_800.0),
+            Datum::new("Mar", 51_000.0),
+        ],
     )]
 }
 
