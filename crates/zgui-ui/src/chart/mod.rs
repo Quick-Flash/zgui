@@ -10,7 +10,8 @@ mod tooltip;
 
 pub use crate::chart::container::{ChartContainer, ChartContainerProps};
 pub use crate::chart::geometry::{
-    MarkBox, Plot, area_path, axes_path, category_step, line_path, rect_path, value_gutter,
+    MarkBox, Plot, area_path, axes_path, category_step, line_path, measured_gutter, rect_path,
+    value_gutter,
 };
 pub use crate::chart::legend::{
     ChartLegendContent, ChartLegendContentProps, LegendAlign, LegendEntry,
@@ -73,8 +74,8 @@ const CATEGORY_GAP: f64 = 4.0;
 ///
 /// # Axes
 ///
-/// The value axis is labelled at its ticks, right-aligned against the axis. Its gutter is wide
-/// enough for the longest label at a generous estimate, or `axis_width` when given. The category
+/// The value axis is labelled at its ticks, right-aligned against the axis. Its gutter is as wide
+/// as the longest label once the labels are laid out, or `axis_width` when given. The category
 /// axis is labelled under each band from the first series. When the bands are too narrow for every
 /// label, only every second, third or later label is drawn.
 ///
@@ -119,8 +120,7 @@ pub fn Chart(
     /// Roughly how many values to label the value axis with.
     #[prop(default = 5)]
     ticks: usize,
-    /// How wide the value axis' gutter is, in CSS pixels. By default it is estimated from the
-    /// longest label.
+    /// How wide the value axis' gutter is, in CSS pixels. By default it follows the longest label.
     #[prop(optional)]
     axis_width: Option<f64>,
     /// Whether to draw a key naming each series.
@@ -147,14 +147,35 @@ pub fn Chart(
 ) -> impl IntoView {
     install_stylesheet(SHEET, ChartStyle::CSS);
     let element = node_ref.unwrap_or_default();
-    // The plot, the value scale and its ticks, which all change together and only when the data
-    // does. The gutter depends on the tick labels, so the plot is part of the answer.
-    let layout = Memo::new(move |_| {
+    // The value scale and its ticks, which change only when the data does. The scale reads the
+    // plot's height alone, so it does not wait for the gutter.
+    let axis = Memo::new(move |_| {
         let base = Plot::new(width, height);
         let scale = series.with(|runs| base.value_scale(runs.iter().flat_map(Series::values)));
         let marks = scale.ticks(ticks);
-        let left = axis_width.unwrap_or_else(|| value_gutter(&marks));
-        (base.with_left(left), scale, marks)
+        (scale, marks)
+    });
+    // The widest value label as laid out, in CSS pixels. The probe is a 100px unit beside a column
+    // of the labels, so the unit converts device pixels without asking for the window's scale.
+    let probe = NodeRef::new();
+    let unit = NodeRef::new();
+    let probe_size = probe.observe_border_size_while(move || axis_width.is_none());
+    let unit_size = unit.observe_border_size_while(move || axis_width.is_none());
+    let widest = Memo::new(move |_| {
+        let labels = f64::from(probe_size.get()?.width.0);
+        let unit = f64::from(unit_size.get()?.width.0) / 100.0;
+        (unit > 0.0).then(|| ((labels - 100.0 * unit) / unit).max(0.0).ceil())
+    });
+    // The plot with its gutter: the caller's width, else the measured labels, else an estimate
+    // until the first measurement arrives.
+    let layout = Memo::new(move |_| {
+        let (scale, marks) = axis.get();
+        let left = axis_width.unwrap_or_else(|| {
+            widest
+                .get()
+                .map_or_else(|| value_gutter(&marks), measured_gutter)
+        });
+        (Plot::new(width, height).with_left(left), scale, marks)
     });
     // Which measurement the pointer is over, and where its mark is. Held rather than derived,
     // because it is an answer only the pointer knows.
@@ -181,6 +202,14 @@ pub fn Chart(
 
     view! {
         box(node_ref = element, {..own}, {..attrs}, class = class) {
+            if move || axis_width.is_none() {
+                row(class = "zui-chart__probe", a11y:hidden = true, node_ref = probe) {
+                    box(class = "zui-chart__probe-unit", node_ref = unit) {}
+                    column {
+                        {move || axis.with(|(_, marks)| probe_labels(marks))}
+                    }
+                }
+            } else {}
             box(class = "zui-chart__plot") {
                 vector(
                     class = "zui-chart__axes",
@@ -323,6 +352,14 @@ fn value_labels(plot: &Plot, scale: &Scale, ticks: &[f64]) -> Vec<AnyView> {
                 }
             })
         })
+        .collect()
+}
+
+/// The value labels as the probe lays them out: one per row, at their natural width.
+fn probe_labels(ticks: &[f64]) -> Vec<AnyView> {
+    ticks
+        .iter()
+        .map(|tick| AnyView::new(view! { text {{tick_label(*tick)}} }))
         .collect()
 }
 

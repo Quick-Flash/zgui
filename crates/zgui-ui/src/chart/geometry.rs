@@ -148,8 +148,8 @@ pub(crate) const LABEL_GAP: f64 = 6.0;
 
 /// A generous estimate of how wide one character of an axis label is, in CSS pixels.
 ///
-/// The labels are measured by the layout, after the plot is laid out. The estimate allows for a
-/// type scale larger than the default.
+/// The chart measures its value labels once they are laid out, and uses this only until then and
+/// for the category labels.
 const LABEL_CHAR: f64 = 8.0;
 
 /// How wide the value axis' gutter is for labels at `ticks`: room for the longest label, the gap
@@ -168,7 +168,21 @@ pub fn value_gutter(ticks: &[f64]) -> f64 {
         .map(|tick| tick_label(*tick).chars().count())
         .max()
         .unwrap_or(0);
-    (longest as f64 * LABEL_CHAR + LABEL_GAP * 2.0).max(MIN_GUTTER)
+    measured_gutter(longest as f64 * LABEL_CHAR)
+}
+
+/// How wide the value axis' gutter is for a longest label `width` CSS pixels wide: the label, the
+/// gap to the axis and a margin at the chart's edge, and never less than 44 pixels.
+///
+/// ```
+/// use zgui_ui::chart::measured_gutter;
+///
+/// assert_eq!(measured_gutter(20.0), 44.0);
+/// assert_eq!(measured_gutter(50.0), 62.0);
+/// ```
+#[must_use]
+pub fn measured_gutter(width: f64) -> f64 {
+    (width + LABEL_GAP * 2.0).max(MIN_GUTTER)
 }
 
 /// Every how many bands a category label is drawn, so that labels `longest` characters long in

@@ -8,7 +8,7 @@ mod desktop;
 use zgui::geom::{Device, DevicePx, Rect};
 use zgui::view;
 use zgui::view::NodeRef;
-use zgui_ui::chart::{LegendEntry, Plot, tick_label, value_gutter};
+use zgui_ui::chart::{LegendEntry, Plot, measured_gutter, tick_label};
 use zgui_ui::prelude::*;
 use zgui_ui_icons::prelude::*;
 use zgui_ui_icons::set::status::CHECK_CIRCLE;
@@ -283,6 +283,28 @@ fn a_leading_icon_before_a_bare_label_keeps_the_full_gap() {
     );
 }
 
+/// The box of the drawn label that says exactly `text`. The chart also lays its value labels out in
+/// a hidden probe one level deeper, which this passes by.
+fn drawn_label(stage: &Stage, text: &str) -> Rect<DevicePx, Device> {
+    stage
+        .census()
+        .nodes
+        .iter()
+        .filter(|node| node.text == text && node.area() > 0.0)
+        .min_by_key(|node| node.depth)
+        .and_then(|node| node.rect)
+        .unwrap_or_else(|| panic!("no drawn label says {text:?}"))
+}
+
+/// The gutter the chart gave its value labels: room for the widest of them as drawn.
+fn drawn_gutter(stage: &Stage, ticks: &[f64]) -> f64 {
+    let widest = ticks
+        .iter()
+        .map(|tick| drawn_label(stage, &tick_label(*tick)).size.width.0)
+        .fold(0.0_f32, f32::max);
+    measured_gutter(f64::from(widest).ceil())
+}
+
 fn revenue() -> Vec<Series> {
     vec![Series::new(
         "Revenue",
@@ -316,9 +338,9 @@ fn value_labels_sit_on_their_grid_lines_inside_the_gutter_under_large_type() {
     let plot = Plot::new(480.0, 240.0);
     let scale = plot.value_scale(revenue().iter().flat_map(Series::values));
     let ticks = scale.ticks(5);
-    let x0 = origin.origin.x.0 + value_gutter(&ticks) as f32;
+    let x0 = origin.origin.x.0 + drawn_gutter(&stage, &ticks) as f32;
     for tick in ticks.iter().filter(|tick| **tick > 0.0) {
-        let label = text_box(&stage, &tick_label(*tick));
+        let label = drawn_label(&stage, &tick_label(*tick));
         let line = origin.origin.y.0 + scale.at(*tick) as f32;
         let centre = label.origin.y.0 + label.size.height.0 / 2.0;
         assert!(
@@ -355,7 +377,7 @@ fn each_category_is_labelled_under_the_middle_of_its_band() {
     let ticks = Plot::new(480.0, 240.0)
         .value_scale(revenue().iter().flat_map(Series::values))
         .ticks(5);
-    let plot = Plot::new(480.0, 240.0).with_left(value_gutter(&ticks));
+    let plot = Plot::new(480.0, 240.0).with_left(drawn_gutter(&stage, &ticks));
     for (position, name) in ["Jan", "Feb", "Mar"].into_iter().enumerate() {
         let label = text_box(&stage, name);
         let (start, band) = plot.band(position, 3);

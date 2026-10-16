@@ -68,6 +68,19 @@ style! { pub ChartStyle =>
     // A value label ends at its `right` and is centred on its grid line. A category label is
     // centred on its band.
     ":scope .zui-chart__label[data-axis=\"value\"] { transform: translateY(-50%); }"
+    // Measures the value labels in the chart's own type: a 100px unit beside a column of the
+    // labels, never drawn.
+    ":scope > .zui-chart__probe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        align-items: flex-start;
+        width: max-content;
+        visibility: hidden;
+        pointer-events: none;
+        white-space: nowrap;
+    }"
+    ":scope > .zui-chart__probe > .zui-chart__probe-unit { flex: none; width: 100px; height: 0; }"
     ":scope .zui-chart__label[data-axis=\"category\"] { transform: translateX(-50%); }"
 
     // ---- the key -------------------------------------------------------------------------------
