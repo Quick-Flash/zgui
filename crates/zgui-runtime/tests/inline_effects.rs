@@ -17,7 +17,8 @@ const CSS: &str = ":root { display: block; width: 400px; height: 300px }
                    .chip.on { background-color: rgb(0, 0, 255) }
                    .under { text-decoration: underline rgb(0, 255, 0) }
                    .shadowed { text-shadow: 2px 2px rgb(255, 0, 255) }
-                   .plain { text-shadow: none }";
+                   .plain { text-shadow: none }
+                   .sup { vertical-align: super }";
 
 /// A solid quad of the frame: its painting order, its colour as 8-bit sRGB and its rectangle.
 fn quads(scene: &zgui_scene::Scene) -> Vec<(u32, [u8; 3], [f32; 4])> {
@@ -31,7 +32,7 @@ fn quads(scene: &zgui_scene::Scene) -> Vec<(u32, [u8; 3], [f32; 4])> {
                     .to_space(zgui_color::ColorSpace::Srgb)
                     .components()
                     .map(|channel| (channel * 255.0).round() as u8);
-                Some((quad.order.into(), rgb, quad.bounds))
+                Some((quad.order, rgb, quad.bounds))
             }
             _ => None,
         })
@@ -90,7 +91,7 @@ fn a_chip_is_painted_under_its_glyphs_across_its_own_range() {
         .primitives
         .mono_sprites
         .iter()
-        .map(|sprite| (u32::from(sprite.order), sprite.bounds))
+        .map(|sprite| (sprite.order, sprite.bounds))
         .collect();
     assert!(!glyphs.is_empty(), "the line drew no glyphs");
     // The order is a painting order over overlaps: a glyph clear of the chip may share its place.
@@ -247,6 +248,40 @@ fn a_run_that_declares_no_text_shadow_drops_the_inherited_one() {
         shadows,
         [2.0, 10.0],
         "the paragraph's two letters are shadowed and the chip's are not"
+    );
+    harness.shut_down();
+}
+
+#[test]
+fn a_superscript_draws_its_glyphs_raised_by_its_shift() {
+    let on = RwSignal::new(false);
+    let mut harness = support::app_with_text(CSS, chip_view(on, "sup"));
+    harness.settle(8);
+    let window = &harness.app().windows()[0];
+    let line = support::first_line_box(window);
+    let tops: Vec<(f32, f32)> = window
+        .scene()
+        .primitives
+        .mono_sprites
+        .iter()
+        .map(|sprite| (sprite.bounds[0] - line.origin.x.0, sprite.bounds[1]))
+        .collect();
+    let plain = tops
+        .iter()
+        .find(|(x, _)| *x == 0.0)
+        .expect("the first letter")
+        .1;
+    let raised: Vec<f32> = tops
+        .iter()
+        .filter(|(x, _)| *x >= 24.0)
+        .map(|(_, top)| *top)
+        .collect();
+    assert_eq!(raised.len(), 4, "{tops:?}");
+    // A third of the 16 px font, in whole pixels.
+    let shift = (16.0 * zgui_layout::inline::vertical_align::SUPER_FRACTION).round();
+    assert!(
+        raised.iter().all(|top| *top == plain - shift),
+        "the superscript's glyphs sit {shift} px above the paragraph's: {tops:?}"
     );
     harness.shut_down();
 }

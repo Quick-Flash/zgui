@@ -169,9 +169,9 @@ pub(crate) fn compute<C: MeasureContent>(
         let run = tree.text_styles_mut().get(&style);
         let strut = scale_strut(tree.content().strut(&run.text), scale);
         let shift = boxes
-            .geometry
+            .shifts
             .get(span.start)
-            .map_or(0.0, |geometry| geometry.shift.0.round());
+            .map_or(0.0, |shift| shift.round());
 
         for line_index in first_line..=last_line {
             let Some(line) = lines.get(line_index) else {
