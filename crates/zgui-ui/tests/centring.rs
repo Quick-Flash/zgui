@@ -329,3 +329,69 @@ fn a_dialog_opened_again_is_centred_again() {
         assert_absent(&stage, TITLE);
     }
 }
+
+/// A theme's entry motion, set on the surface alone: grow out of the bottom right corner from half
+/// the size, with no slide and no fade, slowly enough that the readings below are all part way.
+///
+/// The corner is the reading because `transform-origin` follows its custom properties on every
+/// frame. The side an anchored surface opened on sets the same properties, so the theme only wins
+/// when the positioner's declarations rank below the surface's own.
+const THEMED: &str = ".zui-surface {
+                          --zui-surface-origin-x: right;
+                          --zui-surface-origin-y: bottom;
+                          --zui-surface-enter-x: 0px;
+                          --zui-surface-enter-y: 0px;
+                          --zui-surface-enter-scale: 0.5;
+                          --zui-surface-enter-opacity: 1;
+                          --zui-surface-enter-duration: 2000ms;
+                      }
+                      box.zui-popover { background-color: #ff00ff; color: #ffffff }";
+
+/// What the popover's trigger says.
+const POPOVER_TRIGGER: &str = "Open popover";
+
+/// The bottom right corner of a rectangle.
+fn far_corner(rect: Rect<DevicePx, Device>) -> (f32, f32) {
+    (
+        rect.origin.x.0 + rect.size.width.0,
+        rect.origin.y.0 + rect.size.height.0,
+    )
+}
+
+#[test]
+fn a_themes_surface_motion_wins_over_the_side_it_opened_on() {
+    let Some(mut stage) = Stage::open(&format!("{SHEET}\n{THEMED}"), || {
+        view! {
+            ThemeProvider {
+                column(class = "page") {
+                    Popover {
+                        PopoverTrigger {{POPOVER_TRIGGER}}
+                        PopoverContent {text {"Dimensions"}}
+                    }
+                }
+            }
+        }
+    }) else {
+        eprintln!("skipped: no usable graphics device");
+        return;
+    };
+    let at = aim(&stage, POPOVER_TRIGGER);
+    stage.click(at);
+    stage.wait(Duration::from_millis(200));
+    let entering = panel(&stage);
+
+    stage.wait(Duration::from_millis(2_400));
+    let settled = panel(&stage);
+    assert!(
+        settled.size.width.0 - entering.size.width.0 > 20.0,
+        "the popover was {entering:?} part way in and {settled:?} at rest, so it did not grow \
+         and the reading is not about its motion"
+    );
+    let (entering_x, entering_y) = far_corner(entering);
+    let (settled_x, settled_y) = far_corner(settled);
+    assert!(
+        (entering_x - settled_x).abs() <= SLACK && (entering_y - settled_y).abs() <= SLACK,
+        "the popover grew from {entering:?} to {settled:?}, so it did not grow out of the bottom \
+         right corner the theme asked for"
+    );
+}
