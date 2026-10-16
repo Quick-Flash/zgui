@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use zgui::prelude::*;
-use zgui::reactive::{LocalStorage, Memo, RwSignal, UnsyncCallback};
+use zgui::reactive::{LocalStorage, Memo, RenderEffect, RwSignal, StoredValue, UnsyncCallback};
 use zgui_ui_primitives::{Binding, Collection, Controllable, ItemId};
 
 use crate::listbox::catalogue::ListboxCatalogue;
@@ -83,6 +83,11 @@ pub struct Listbox {
     surface: OverlayState,
     /// Whether choosing something closes that surface.
     dismisses: bool,
+    /// Whether the active option is to be scrolled into view once its element exists.
+    ///
+    /// Set by the keyboard, by opening the list on the chosen option and by the filter. A pointer
+    /// that moves over an option leaves it clear, so the list does not move under the pointer.
+    reveal: RwSignal<bool, LocalStorage>,
 }
 
 impl Listbox {
@@ -106,7 +111,7 @@ impl Listbox {
                 || chosen.get(),
             )
         });
-        Self {
+        let listbox = Self {
             collection,
             options,
             active,
@@ -117,6 +122,37 @@ impl Listbox {
             labels: ListboxLabels::new(),
             surface,
             dismisses: true,
+            reveal: RwSignal::new_local(false),
+        };
+        listbox.reveal_active();
+        listbox
+    }
+
+    /// Scrolls the active option into view each time [`Listbox::reveal`] is set.
+    ///
+    /// The effect reads nothing else while the flag is clear. When it is set, the effect waits for
+    /// the option's element, because a list that opens in this turn mounts its options later.
+    fn reveal_active(&self) {
+        let listbox = *self;
+        let revealing = RenderEffect::new(move |_| {
+            if !listbox.reveal.get() {
+                return;
+            }
+            let node = listbox.active_node();
+            if node.get().is_none() {
+                return;
+            }
+            node.scroll_to(ScrollTarget::IntoView, ScrollBehavior::Instant);
+            listbox.reveal.set(false);
+        });
+        // Stored, so the effect lives as long as the scope that made the listbox.
+        StoredValue::new_local(revealing);
+    }
+
+    /// Asks for the active option to be scrolled into view.
+    fn reveal(&self) {
+        if !self.reveal.get_untracked() {
+            self.reveal.set(true);
         }
     }
 
@@ -319,6 +355,7 @@ impl Listbox {
             self.query_active.set(true);
         }
         self.ask(Active::First);
+        self.reveal();
     }
 
     /// Whether something has been typed since the query was last reset.
@@ -373,6 +410,7 @@ impl Listbox {
         };
         let index = at.rem_euclid(length) as usize;
         self.set_active(Some(entries[index].id()));
+        self.reveal();
     }
 
     /// Moves the highlight to the last option that can be chosen, or the first.
@@ -385,6 +423,7 @@ impl Listbox {
         };
         if let Some(entry) = target {
             self.set_active(Some(entry.id()));
+            self.reveal();
         }
     }
 
@@ -395,6 +434,7 @@ impl Listbox {
     /// that opens in the same turn mount later, so the highlight finds its option when it is read.
     pub fn highlight_chosen(&self) {
         self.ask(Active::Chosen);
+        self.reveal();
     }
 
     /// Carries out what a key press means, and reports whether anything came of it.
