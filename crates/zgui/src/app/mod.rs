@@ -377,10 +377,11 @@ impl App {
         self.inner.layout_threads()
     }
 
-    /// Installs the application's own style sheet.
+    /// Adds a style sheet of the application's own.
     ///
-    /// It is added at the author origin, over this framework's own sheet, which is what gives
-    /// every element name its layout before a single application rule is written.
+    /// Each call adds one sheet. The sheets cascade in call order. They are added at the author
+    /// origin, over this framework's own sheet, which is what gives every element name its layout
+    /// before a single application rule is written.
     pub fn with_stylesheet(mut self, css: impl Into<String>) -> Self {
         self.inner = self.inner.with_stylesheet(css);
         self

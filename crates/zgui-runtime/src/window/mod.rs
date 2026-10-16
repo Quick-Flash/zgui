@@ -83,13 +83,13 @@ pub const ATLAS_SOFT_BYTES: u64 = 64 * 1024 * 1024;
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct WindowContent {
-    /// The application's own stylesheet, as text.
-    pub stylesheet: Option<String>,
-    /// This window's own sheet, cascaded after the application's.
+    /// The application's own stylesheets, as text. They cascade in this order.
+    pub stylesheets: Vec<String>,
+    /// This window's own sheets, cascaded after the application's, in this order.
     ///
     /// For the window that is not the application: an inspector, a preferences panel, a palette.
-    /// Later in the cascade than the application's own sheet, so a rule of equal weight here wins.
-    pub window_stylesheet: Option<String>,
+    /// Later in the cascade than the application's own sheets, so a rule of equal weight here wins.
+    pub window_stylesheets: Vec<String>,
     /// What to tell about each frame after it has been produced, if anything.
     ///
     /// An option and not a list: one seam, one occupant. A window with several probes would have
@@ -102,17 +102,19 @@ pub struct WindowContent {
 impl WindowContent {
     /// The application's options with one window's own laid over them.
     ///
-    /// The application's stylesheet stays the application's and the window's becomes the second
-    /// sheet, so a window sheet extends the application's rather than replacing it. A window that
+    /// The application's stylesheets stay the application's. The window's sheets come after them,
+    /// so a window sheet extends the application's sheets. A window that
     /// brought its own probe is watched by that one; one that brought none is watched by whatever
     /// watches the application.
     pub(crate) fn layered_with(&self, window: &Self) -> Self {
         Self {
-            stylesheet: self.stylesheet.clone(),
-            window_stylesheet: window
-                .window_stylesheet
-                .clone()
-                .or_else(|| window.stylesheet.clone()),
+            stylesheets: self.stylesheets.clone(),
+            window_stylesheets: window
+                .stylesheets
+                .iter()
+                .chain(&window.window_stylesheets)
+                .cloned()
+                .collect(),
             probe: window.probe.clone().or_else(|| self.probe.clone()),
         }
     }
@@ -598,14 +600,12 @@ impl Window {
             StyleEngine::new(&borrowed, metrics, viewport)
         };
         let mut sheets = Vec::new();
-        // The application's sheet first and this window's own second, so a rule of equal weight in
-        // a window's sheet wins over the application's.
-        for css in [
-            options.stylesheet.as_deref(),
-            options.window_stylesheet.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
+        // The application's sheets first and this window's own after them, each in call order, so
+        // a rule of equal weight in a later sheet wins.
+        for css in options
+            .stylesheets
+            .iter()
+            .chain(&options.window_stylesheets)
         {
             let borrowed = document.borrow();
             let (handle, diagnostics) =

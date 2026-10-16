@@ -130,9 +130,11 @@ impl WindowOptions {
         self
     }
 
-    /// This window's own stylesheet, cascaded after the application's.
+    /// Adds a stylesheet of this window's own, cascaded after the application's.
+    ///
+    /// Each call adds one sheet. The sheets cascade in call order.
     pub fn with_stylesheet(mut self, css: impl Into<String>) -> Self {
-        self.runtime.window_stylesheet = Some(css.into());
+        self.runtime.window_stylesheets.push(css.into());
         self
     }
 
