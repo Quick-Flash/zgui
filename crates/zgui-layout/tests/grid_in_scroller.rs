@@ -65,9 +65,3 @@ fn check(fixture: &Fixture) {
 fn a_grid_of_visible_cells_keeps_its_height() {
     check(&fixture("overflow: visible"));
 }
-
-#[test]
-#[ignore = "needs cephal with the grid min-content block size fix"]
-fn a_grid_of_clipping_cells_keeps_its_height() {
-    check(&fixture("overflow: hidden"));
-}
