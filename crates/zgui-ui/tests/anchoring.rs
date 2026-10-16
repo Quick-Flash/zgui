@@ -39,6 +39,8 @@ const SHEET: &str = ":root { background-color: #ffffff; color: #101010; font-fam
                      .probe { align-self: flex-start }
                      .probe.at-right { align-self: flex-end }
                      .tall { height: 1200px; flex-shrink: 0 }
+                     .half { height: 340px; flex-shrink: 0 }
+                     .low { height: 760px; flex-shrink: 0 }
                      .snug { padding-top: 4px }
                      .region { height: 220px; width: 340px; overflow: auto;
                                border: 1px solid #d0d0d0 }
@@ -556,5 +558,147 @@ fn a_menubar_menu_hangs_from_the_start_of_its_trigger() {
         across.abs() <= SLACK,
         "the menu's left edge is {across} device pixels from its trigger's; trigger {trigger:?}, \
          menu {menu:?}"
+    );
+}
+
+// ---- a surface taller than the room in the window ----------------------------------------------
+
+/// How many rows the long lists below have: more than the window holds at any density here.
+const ROWS: usize = 30;
+
+/// The text of row `n`.
+fn row_text(n: usize) -> String {
+    format!("Row {n:02}")
+}
+
+/// What a long list says, all of it.
+fn long_list_text() -> String {
+    (1..=ROWS).map(row_text).collect()
+}
+
+/// A dropdown menu with [`ROWS`] items.
+#[component]
+fn LongMenu() -> impl IntoView {
+    view! {
+        row(class = "probe") {
+            DropdownMenu {
+                DropdownMenuTrigger {"Long menu"}
+                DropdownMenuContent {
+                    {(1..=ROWS)
+                        .map(|n| view! { MenuItem {{row_text(n)}} }.into_view())
+                        .collect::<Vec<_>>()}
+                }
+            }
+        }
+    }
+}
+
+/// A select with [`ROWS`] items, whose trigger says [`TRIGGER`].
+#[component]
+fn LongSelect() -> impl IntoView {
+    let value = RwSignal::new_local(String::new());
+    view! {
+        row(class = "probe") {
+            Select(value = value) {
+                SelectTrigger(a11y:label = "Row") {SelectValue(placeholder = TRIGGER)}
+                SelectContent {
+                    {(1..=ROWS)
+                        .map(|n| {
+                            view! { SelectItem(value = n.to_string()) {{row_text(n)}} }.into_view()
+                        })
+                        .collect::<Vec<_>>()}
+                }
+            }
+        }
+    }
+}
+
+/// Asserts that `panel` is inside the window, the padding kept at both ends, at `density`.
+fn assert_inside(panel: Rect<DevicePx, Device>, density: f64) {
+    let padding = 8.0 * density as f32;
+    let bottom = panel.origin.y.0 + panel.size.height.0;
+    assert!(
+        panel.origin.y.0 >= padding - SLACK && bottom <= HEIGHT - padding + SLACK,
+        "the list runs from {} to {bottom}, outside the {padding} device pixels the window keeps \
+         clear at either end: {panel:?}",
+        panel.origin.y.0
+    );
+}
+
+/// Turns the wheel over `panel` and asserts that its last row comes up.
+fn assert_scrolls(stage: &mut Stage, panel: Rect<DevicePx, Device>) {
+    let last = row_text(ROWS);
+    let before = box_saying(stage, &last);
+    stage.move_to(Point::new(
+        DevicePx(panel.origin.x.0 + panel.size.width.0 / 2.0),
+        DevicePx(panel.origin.y.0 + panel.size.height.0 / 2.0),
+    ));
+    for _ in 0..40 {
+        stage.wheel(3.0);
+    }
+    let after = box_saying(stage, &last);
+    assert!(
+        after.origin.y.0 < before.origin.y.0,
+        "the wheel over the list did not bring its last row up: {before:?} then {after:?}"
+    );
+    assert!(
+        after.origin.y.0 + after.size.height.0 <= panel.origin.y.0 + panel.size.height.0 + SLACK,
+        "the last row is still below the bottom of the list: {after:?} in {panel:?}"
+    );
+}
+
+#[test]
+fn a_long_dropdown_menu_in_the_middle_of_the_window_is_capped_to_the_window_and_scrolls() {
+    let mut stage = opened(DENSE, || {
+        view! {
+            ThemeProvider {
+                column(class = "page") {box(class = "half")LongMenu()text {"under it"}}
+            }
+        }
+    });
+    stage.click_saying("Long menu");
+    stage.settle();
+
+    let panel = panel_saying(&stage, &long_list_text());
+    assert_inside(panel, DENSE);
+    assert_scrolls(&mut stage, panel);
+}
+
+#[test]
+fn a_long_select_in_the_middle_of_the_window_is_capped_to_the_window_and_scrolls() {
+    let mut stage = opened(DENSE, || {
+        view! {
+            ThemeProvider {
+                column(class = "page") {box(class = "half")LongSelect()text {"under it"}}
+            }
+        }
+    });
+    stage.click_saying(TRIGGER);
+    stage.settle();
+
+    let panel = panel_saying(&stage, &long_list_text());
+    assert_inside(panel, DENSE);
+    assert_scrolls(&mut stage, panel);
+}
+
+#[test]
+fn a_long_select_near_the_bottom_of_the_window_opens_above_and_is_capped() {
+    let mut stage = opened(1.0, || {
+        view! {
+            ThemeProvider {
+                column(class = "page") {box(class = "low")LongSelect()text {"under it"}}
+            }
+        }
+    });
+    let trigger = box_saying(&stage, TRIGGER);
+    stage.click_saying(TRIGGER);
+    stage.settle();
+
+    let panel = panel_saying(&stage, &long_list_text());
+    assert_inside(panel, 1.0);
+    assert!(
+        panel.origin.y.0 + panel.size.height.0 <= trigger.origin.y.0,
+        "there is more room above, so the list opens above its trigger: {panel:?} against \
+         {trigger:?}"
     );
 }
