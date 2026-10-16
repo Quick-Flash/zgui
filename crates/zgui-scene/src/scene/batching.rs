@@ -83,7 +83,7 @@ impl Scene {
             PrimitiveKind::GroupStart | PrimitiveKind::GroupEnd => {
                 return self.primitives.groups.get(index)?.transform;
             }
-            PrimitiveKind::Backdrop => return None,
+            PrimitiveKind::Backdrop => return self.primitives.backdrops.get(index)?.transform,
         };
         self.spatial.at(slot)
     }

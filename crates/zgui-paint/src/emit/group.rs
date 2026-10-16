@@ -200,7 +200,11 @@ pub fn backdrop(
     if filters.is_empty() {
         return 0;
     }
-    let filter = BackdropFilter::new(fragment.border_box, filters).clipped(clip);
+    // The border box is in the box's own coordinate system, as every other rectangle it paints.
+    let space = fragment.transform.filter(|id| *id != SpatialId::VIEWPORT);
+    let filter = BackdropFilter::new(fragment.border_box, filters)
+        .clipped(clip)
+        .in_space(space);
     usize::from(scene.push_backdrop(filter).is_some())
 }
 
@@ -329,5 +333,38 @@ mod tests {
                 "with the system at {now}"
             );
         }
+    }
+
+    /// A backdrop is measured in the box's own coordinate system, as the box's other rectangles
+    /// are, so the renderer can put it where the system is in the frame it draws.
+    #[test]
+    fn a_backdrop_is_measured_in_the_coordinate_system_of_its_box() {
+        let mut style = translucent(1.0);
+        style.group.backdrop.push(zgui_scene::Filter::Blur(4.0));
+        let mut fragment = fragment(true, false);
+        fragment.border_box = rect(10.0, 10.0, 40.0, 30.0);
+        let mut scene = zgui_scene::Scene::new();
+        scene.begin_frame(zgui_geom::Size::new(200, 200));
+        let owner = zgui_scene::PropertyOwner::new(7).expect("a handle");
+        let own = zgui_scene::OwnSpace::of(
+            Some(zgui_geom::Matrix4::translation(100.0, 0.0, 0.0)),
+            None,
+            false,
+        );
+        let viewport = scene.spatial.viewport();
+        let space = scene.spatial.space_of(viewport, owner, own);
+        fragment.transform = Some(space);
+        let pushed = super::backdrop(
+            &mut scene,
+            &style,
+            &fragment,
+            zgui_scene::ClipId::ROOT,
+            &crate::content::shader::NoShaders,
+            1.0,
+        );
+        assert_eq!(pushed, 1);
+        let backdrop = &scene.primitives.backdrops[0];
+        assert_eq!(backdrop.transform, Some(space));
+        assert_eq!(backdrop.bounds, rect(10.0, 10.0, 40.0, 30.0));
     }
 }

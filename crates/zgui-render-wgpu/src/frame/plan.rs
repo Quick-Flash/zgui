@@ -57,7 +57,7 @@ pub fn plan_segments(
         .backdrops
         .iter()
         .filter(|backdrop| !backdrop.reads_only_what_it_writes())
-        .map(|backdrop| rounded_out(backdrop.source))
+        .map(|backdrop| rounded_out(on_device(scene, backdrop).1))
         .collect();
 
     plan_mark_pages(&mut builder, scene, marks);
@@ -247,7 +247,7 @@ fn plan_rect(
                 let Some(backdrop) = scene.primitives.backdrops.get(index) else {
                     continue;
                 };
-                plan_backdrop(builder, backdrop, current, scissor, used);
+                plan_backdrop(builder, scene, backdrop, current, scissor, used);
                 builder.begin_pass(current, scissor);
             }
             Batch::External(index) => {
@@ -394,19 +394,21 @@ fn end_group(builder: &mut PlanBuilder<'_>, group: &OpenGroup, scissor: Rect<i32
 /// Captures what lies beneath a backdrop, filters it, and draws the result.
 fn plan_backdrop(
     builder: &mut PlanBuilder<'_>,
+    scene: &Scene,
     backdrop: &BackdropFilter,
     beneath: TargetRef,
     scissor: Rect<i32, Device>,
     used: Rect<i32, Device>,
 ) {
+    let (written, read) = on_device(scene, backdrop);
     // The batch stream is replayed once per damage rectangle, so a rectangle nowhere near this
     // backdrop still reaches here. It writes nothing inside such a rectangle, and capturing what
     // it would have read is both wasted and impossible — the read lies outside what this pass is
     // allowed to write.
-    if clamped(backdrop.bounds, scissor, used).is_empty() {
+    if clamped(written, scissor, used).is_empty() {
         return;
     }
-    let Some(source) = enclosing(backdrop.source, used) else {
+    let Some(source) = enclosing(read, used) else {
         return;
     };
     // What a backdrop reads has to be inside what this frame has already written into the target
@@ -425,7 +427,7 @@ fn plan_backdrop(
     };
     // A backdrop composites only over what it writes, which is what gives a frosted panel the
     // defined shape its clip describes rather than a soft fade past its own edge.
-    let bounds = clamped(backdrop.bounds, scissor, used);
+    let bounds = clamped(written, scissor, used);
     composite(
         builder,
         &filtered,
@@ -443,6 +445,30 @@ fn plan_backdrop(
     {
         builder.release(slot);
     }
+}
+
+/// What a backdrop writes and what it reads, on the device.
+///
+/// The backdrop is measured in its coordinate system, which a place write can have moved since the
+/// backdrop was emitted, so the rectangles go on the device through the current matrix. The read
+/// extent is then taken on the device, where the filter runs.
+fn on_device(
+    scene: &Scene,
+    backdrop: &BackdropFilter,
+) -> (Rect<DevicePx, Device>, Rect<DevicePx, Device>) {
+    let Some(matrix) = backdrop
+        .transform
+        .and_then(|space| scene.spatial.resolve(space))
+    else {
+        return (backdrop.bounds, backdrop.source);
+    };
+    let written = zgui_geom::transformed_bounds(&matrix, backdrop.bounds);
+    let read = if backdrop.reads_only_what_it_writes() {
+        written
+    } else {
+        zgui_scene::read_extent(written, &backdrop.filters)
+    };
+    (written, read)
 }
 
 /// Draws a filtered result, and any shadow behind it, into `destination`.

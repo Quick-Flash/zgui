@@ -742,3 +742,64 @@ fn a_group_is_composited_where_its_coordinate_system_now_is() {
         );
     }
 }
+
+/// Stripes under a blurring panel, drawn under a coordinate system shifted by `shift`, or drawn at
+/// the shifted place with no coordinate system at all when `flat`.
+fn frosted_in_space(shift: f32, flat: bool) -> Scene {
+    let mut scene = Scene::new();
+    scene.begin_frame(Size::new(SIDE, SIDE));
+    let white = scene
+        .paints
+        .add(zgui_scene::Paint::Solid(opaque(255, 255, 255)));
+    scene.push_quad(Quad::filled(
+        rect(0.0, 0.0, SIDE as f32, SIDE as f32),
+        white,
+    ));
+    let black = scene.paints.add(zgui_scene::Paint::Solid(opaque(0, 0, 0)));
+    for stripe in 0..(SIDE / 8) {
+        scene.push_quad(Quad::filled(
+            rect(stripe as f32 * 8.0, 0.0, 4.0, SIDE as f32),
+            black,
+        ));
+    }
+    let (offset, space) = if flat {
+        (shift, None)
+    } else {
+        let owner = zgui_scene::PropertyOwner::new(9).expect("a handle");
+        let own = zgui_scene::OwnSpace::of(
+            Some(zgui_geom::Matrix4::translation(shift, 0.0, 0.0)),
+            None,
+            false,
+        );
+        let viewport = scene.spatial.viewport();
+        (0.0, Some(scene.spatial.space_of(viewport, owner, own)))
+    };
+    scene.push_backdrop(
+        BackdropFilter::new(
+            rect(12.0 + offset, 12.0, 24.0, 24.0),
+            [Filter::Blur(3.0)].into_iter().collect(),
+        )
+        .in_space(space),
+    );
+    scene.finish(&DamageSet::full());
+    scene
+}
+
+#[test]
+fn a_backdrop_is_drawn_where_its_coordinate_system_now_is() {
+    // A backdrop's rectangles are in its own coordinate system, so a write that moves the system
+    // moves what the filter reads and writes with it. Read on the device as they were emitted,
+    // they blur the place the system has moved away from.
+    let Some((mut moved, mut flat)) = support::renderer_pair() else {
+        return;
+    };
+    for shift in [0.0, 6.0, 20.0] {
+        let drawn = present(&mut moved, &frosted_in_space(shift, false));
+        let expected = present(&mut flat, &frosted_in_space(shift, true));
+        assert_eq!(
+            drawn.max_difference(&expected),
+            0,
+            "shifted by {shift}: the backdrop under the system differs from the backdrop drawn there"
+        );
+    }
+}

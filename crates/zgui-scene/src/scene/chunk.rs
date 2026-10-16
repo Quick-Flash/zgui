@@ -417,7 +417,12 @@ fn slot_of(chunk: &ChunkPrims, op: PaintOp) -> u32 {
             .get(index)
             .and_then(|prim| prim.transform)
             .map_or(viewport, crate::spatial::SpatialId::index),
-        PrimitiveKind::Backdrop | PrimitiveKind::GroupStart | PrimitiveKind::GroupEnd => viewport,
+        PrimitiveKind::Backdrop => chunk
+            .backdrops
+            .get(index)
+            .and_then(|prim| prim.transform)
+            .map_or(viewport, crate::spatial::SpatialId::index),
+        PrimitiveKind::GroupStart | PrimitiveKind::GroupEnd => viewport,
     }
 }
 
