@@ -1490,9 +1490,9 @@ impl Window {
                 // coverage has no meaning there: the paint demotes it to ordinary coverage.
                 opaque_surface: !self.translucent,
                 anim: &*document,
-                // The bars are chrome rather than content, so nothing in the document cascades to
-                // them; what they follow is the scheme the window is presented in, which is the
-                // same input the sheet's own dark rules are matched against.
+                // The paint for bars whose scroll container names no single `color-scheme`: the
+                // scheme the window is presented in, which is the same input the sheet's own dark
+                // rules are matched against. A container's scheme and colours override it.
                 scrollbars: zgui_paint::emit::scrollbar::paint_for(
                     self.scheme == zgui_style::ColorScheme::Dark,
                 ),

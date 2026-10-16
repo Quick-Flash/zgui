@@ -297,6 +297,12 @@ fn hash_of(style: &PaintStyle, scale: f32) -> u64 {
         let (left, top, right, bottom) = filter.kernel_support();
         hash = hash.f32s(&[left, top, right, bottom]);
     }
+    hash = hash.u32(style.scrollbar.scheme as u32);
+    if let Some(colors) = &style.scrollbar.colors {
+        for value in [colors.thumb, colors.track].into_iter().flatten() {
+            hash = color(hash, value);
+        }
+    }
     style.decoration.fold_into(hash).finish()
 }
 

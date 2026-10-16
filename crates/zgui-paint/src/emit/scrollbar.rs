@@ -15,6 +15,8 @@ use zgui_geom::{Corners, Device, DevicePx, Point, Rect, Size, Vec2};
 use zgui_layout::fragment::ScrollbarPart;
 use zgui_scene::{ClipId, Paint, Quad, Scene, SpatialId};
 
+use crate::lower::scrollbar::{ScrollbarScheme, ScrollbarStyle};
+
 /// How a scrollbar's two parts are painted.
 ///
 /// The track is transparent in every default: presses in the groove still page, because the hit
@@ -148,6 +150,29 @@ pub fn paint_for(dark: bool) -> ScrollbarPaint {
     if dark { dark_paint() } else { default_paint() }
 }
 
+/// The paint for the bars of a box whose style says `style`, in a window whose bars take `window`.
+///
+/// A scroll container that names one `color-scheme` takes that scheme's paint, and the colours a
+/// style sheet set replace the default ones. A box that says neither keeps `window`.
+pub fn resolve(window: ScrollbarPaint, style: &ScrollbarStyle) -> ScrollbarPaint {
+    let mut paint = match style.scheme {
+        ScrollbarScheme::Window => window,
+        ScrollbarScheme::Light => ScrollbarPaint {
+            thumb_thickness: window.thumb_thickness,
+            ..default_paint()
+        },
+        ScrollbarScheme::Dark => ScrollbarPaint {
+            thumb_thickness: window.thumb_thickness,
+            ..dark_paint()
+        },
+    };
+    if let Some(colors) = &style.colors {
+        paint.thumb = colors.thumb.unwrap_or(paint.thumb);
+        paint.track = colors.track.unwrap_or(paint.track);
+    }
+    paint
+}
+
 /// A fully transparent paint, which draws no scrollbar at all.
 pub fn hidden_paint() -> ScrollbarPaint {
     ScrollbarPaint {
@@ -163,7 +188,7 @@ mod tests {
     use zgui_layout::fragment::ScrollbarPart;
     use zgui_scene::{ClipId, Scene};
 
-    use super::{default_paint, emit, hidden_paint, slim};
+    use super::{dark_paint, default_paint, emit, hidden_paint, resolve, slim};
 
     /// A vertical bar twelve pixels wide.
     fn bar() -> Rect<DevicePx, Device> {
@@ -270,5 +295,40 @@ mod tests {
             0
         );
         assert_eq!(scene.primitives.quads.len(), 1, "nothing more was pushed");
+    }
+
+    #[test]
+    fn a_style_picks_its_scheme_and_replaces_the_colours_it_names() {
+        use std::sync::Arc;
+
+        use zgui_color::Color;
+
+        use crate::lower::scrollbar::{ScrollbarColors, ScrollbarScheme, ScrollbarStyle};
+
+        let window = default_paint();
+        assert_eq!(resolve(window, &ScrollbarStyle::default()), window);
+
+        let dark = ScrollbarStyle {
+            scheme: ScrollbarScheme::Dark,
+            colors: None,
+        };
+        assert_eq!(resolve(window, &dark), dark_paint());
+        let light = ScrollbarStyle {
+            scheme: ScrollbarScheme::Light,
+            colors: None,
+        };
+        assert_eq!(resolve(dark_paint(), &light), default_paint());
+
+        let lime = Color::srgb(0.0, 1.0, 0.0, 1.0);
+        let themed = ScrollbarStyle {
+            scheme: ScrollbarScheme::Window,
+            colors: Some(Arc::new(ScrollbarColors {
+                thumb: Some(lime),
+                track: None,
+            })),
+        };
+        let paint = resolve(window, &themed);
+        assert_eq!(paint.thumb, lime);
+        assert_eq!(paint.track, window.track, "the track keeps its default");
     }
 }

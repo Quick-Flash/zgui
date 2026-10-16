@@ -352,7 +352,7 @@ fn content_tracked(
             scene,
             part,
             fragment.border_box,
-            emission.scrollbars,
+            scrollbar::resolve(emission.scrollbars, &style.scrollbar),
             emission.box_placement.clip,
         ),
     };

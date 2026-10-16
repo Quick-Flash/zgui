@@ -560,3 +560,67 @@ fn a_padded_scroller_draws_its_bar_against_its_edge_and_its_padding_hits_no_bar(
     pointer(&mut harness, PointerAction::Pressed, (392.0, 290.0));
     assert_eq!(offset(&harness), 300.0);
 }
+
+/// The colour of the quad painted at exactly `rect`, as premultiplied sRGB.
+fn painted_color(
+    harness: &zgui_platform_headless::Harness<zgui_runtime::Runtime>,
+    rect: [f32; 4],
+) -> Option<[f32; 4]> {
+    let scene = window(harness).scene();
+    scene
+        .primitives
+        .quads
+        .iter()
+        .find(|quad| {
+            quad.bounds
+                .iter()
+                .zip(rect.iter())
+                .all(|(drawn, wanted)| (drawn - wanted).abs() < 0.01)
+        })
+        .and_then(|quad| quad.fill.id().and_then(|id| scene.paints.get(id)))
+        .and_then(|paint| match paint {
+            zgui_scene::Paint::Solid(color) => Some(color.to_premultiplied_srgb()),
+            _ => None,
+        })
+}
+
+/// Where the default thumb is painted on the scrolling page.
+const THUMB: [f32; 4] = [400.0 - GUTTER / 2.0 - 3.0, 0.0, 6.0, 150.0];
+
+/// The scrolling page in a dark scheme, on a platform that presents light.
+const DARK_CSS: &str = "
+root { display: block; width: 100%; height: 100%; overflow-x: hidden; overflow-y: scroll;
+       color-scheme: dark }
+.filler { display: block; width: 100%; height: 600px; background-color: #202020 }
+";
+
+/// The scrolling page with a themed thumb.
+const LIME_CSS: &str = "
+:root { --zgui-scrollbar-thumb: rgb(0, 255, 0) }
+root { display: block; width: 100%; height: 100%; overflow-x: hidden; overflow-y: scroll }
+.filler { display: block; width: 100%; height: 600px; background-color: #202020 }
+";
+
+#[test]
+fn a_scroller_in_a_dark_scheme_paints_the_dark_thumb_on_a_light_platform() {
+    let mut harness = page(CSS, false);
+    harness.settle(8);
+    let light = painted_color(&harness, THUMB).expect("the thumb was painted");
+    assert_eq!(light, [0.0, 0.0, 0.0, 0.35], "the platform's light paint");
+
+    let mut harness = page(DARK_CSS, false);
+    harness.settle(8);
+    let dark = painted_color(&harness, THUMB).expect("the thumb was painted");
+    assert_eq!(
+        dark,
+        [0.5, 0.5, 0.5, 0.5],
+        "translucent white, premultiplied"
+    );
+}
+
+#[test]
+fn a_custom_property_sets_the_thumb_colour() {
+    let mut harness = page(LIME_CSS, false);
+    harness.settle(8);
+    assert_eq!(painted_color(&harness, THUMB), Some([0.0, 1.0, 0.0, 1.0]));
+}
