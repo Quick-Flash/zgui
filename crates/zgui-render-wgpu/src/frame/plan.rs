@@ -421,7 +421,9 @@ fn plan_backdrop(
         "a backdrop reads {source:?}, which the region {scissor:?} being written does not contain"
     );
     let chain = Chain::of(&backdrop.filters);
-    let Some(filtered) = crate::filter::backdrop::plan(builder, beneath, &chain, source) else {
+    let Some((filtered, captured)) =
+        crate::filter::backdrop::plan(builder, beneath, &chain, source)
+    else {
         builder.note_unisolated();
         return;
     };
@@ -442,6 +444,17 @@ fn plan_backdrop(
         .iter()
         .filter_map(|shadow| shadow.source.slot())
         .chain(filtered.target.slot())
+    {
+        builder.release(slot);
+    }
+    // The copy is the chain's input, which the chain keeps. Holding it to the end of the frame
+    // holds one full-surface target per backdrop, and every damage rectangle replays the backdrop.
+    if let Some(slot) = captured.slot()
+        && captured != filtered.target
+        && !filtered
+            .shadows
+            .iter()
+            .any(|shadow| shadow.source == captured)
     {
         builder.release(slot);
     }

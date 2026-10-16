@@ -17,6 +17,9 @@ use crate::frame::target::TargetRef;
 /// previous frame's composite — which already contains this filter's own output, so a frosted
 /// panel smears a little further every frame until the whole panel is fog.
 ///
+/// Returns the filtered result and the copy. The chain never releases its own input, so the caller
+/// releases the copy after the composite unless the result still names it.
+///
 /// Returns `None` when the pool could not lend a target for the copy, in which case the region is
 /// left as it is: an unfiltered backdrop is the content it was meant to frost, which is a visible
 /// degradation and not a wrong picture.
@@ -25,12 +28,12 @@ pub fn plan(
     beneath: TargetRef,
     chain: &Chain,
     region: Rect<i32, Device>,
-) -> Option<Filtered> {
+) -> Option<(Filtered, TargetRef)> {
     let captured = TargetRef::Pool(builder.acquire_like(beneath)?);
     builder.encoder(EncoderOp::Capture {
         source: beneath,
         destination: captured,
         region,
     });
-    Some(filter::plan(builder, chain, captured, region))
+    Some((filter::plan(builder, chain, captured, region), captured))
 }
