@@ -424,6 +424,9 @@ pub struct Inherited<'a> {
     pub text_fill: Option<&'a crate::lower::background::GradientSpec>,
     /// The decorations drawn across the line, outermost first.
     pub decorations: &'a [DecorationStyle],
+    /// The parts of nested inline boxes on the line, in tree order, whose own decorations are
+    /// drawn with it.
+    pub inline: &'a [crate::emit::inline::InlinePaint],
 }
 
 /// Emits one line's glyphs and decorations, and returns how many primitives were pushed.
@@ -447,6 +450,7 @@ pub fn emit(
     let Inherited {
         text_fill,
         decorations,
+        inline,
     } = inherited;
     // Resolved once for the whole line rather than per pass: a gradient across the text is
     // measured across the line box, and resolving it again per shadow would intern the same ramp
@@ -503,6 +507,13 @@ pub fn emit(
             },
         );
     }
+    pushed += crate::emit::inline::decorations(
+        scene,
+        inline,
+        crate::emit::inline::Lines::UnderGlyphs,
+        placement.clip,
+        placement.transform,
+    );
     pushed += runs(
         scene,
         glyphs,
@@ -519,6 +530,13 @@ pub fn emit(
             offset: Size::new(DevicePx(0.0), DevicePx(0.0)),
             force_mono: false,
         },
+    );
+    pushed += crate::emit::inline::decorations(
+        scene,
+        inline,
+        crate::emit::inline::Lines::OverGlyphs,
+        placement.clip,
+        placement.transform,
     );
     for decoration in decorations {
         pushed += lines(scene, decoration, placement);
@@ -1318,6 +1336,7 @@ mod tests {
             super::Inherited {
                 text_fill: Some(&ramp),
                 decorations: &[],
+                inline: &[],
             },
         );
         let item = &scene.primitives.vectors[0];

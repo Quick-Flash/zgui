@@ -78,7 +78,8 @@ pub struct Emission<'a> {
     pub text_fill: Option<&'a crate::lower::background::GradientSpec>,
     /// The parts of nested inline boxes a line paints, in tree order.
     ///
-    /// Empty for every fragment that is not a line with [`FragmentFlags::INLINE_EFFECTS`].
+    /// Empty for every fragment that is not a line with [`FragmentFlags::INLINE_EFFECTS`]. Their
+    /// colours already carry the folded alpha.
     ///
     /// [`FragmentFlags::INLINE_EFFECTS`]: zgui_layout::fragment::FragmentFlags::INLINE_EFFECTS
     pub inline: &'a [crate::emit::inline::InlinePaint],
@@ -204,7 +205,6 @@ fn content_tracked(
             let mut pushed = crate::emit::inline::boxes(
                 scene,
                 emission.inline,
-                emission.alpha,
                 emission.shaders,
                 emission.pointer,
             );
@@ -228,6 +228,7 @@ fn content_tracked(
                 text::Inherited {
                     text_fill: emission.text_fill,
                     decorations: emission.decorations,
+                    inline: emission.inline,
                 },
                 emission.text_placement,
             );
@@ -253,6 +254,7 @@ fn content_tracked(
             text::Inherited {
                 text_fill: emission.text_fill,
                 decorations: emission.decorations,
+                inline: &[],
             },
             emission.text_placement,
         ),

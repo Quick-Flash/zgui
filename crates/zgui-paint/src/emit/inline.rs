@@ -113,12 +113,9 @@ fn sliced(mut radii: Corners<Vec2<DevicePx>>, first: bool, last: bool) -> Corner
 
 /// Emits the shadows, backgrounds and borders of every part, in tree order, and returns how many
 /// primitives were pushed.
-///
-/// `alpha` is the folded group alpha every colour is multiplied by.
 pub fn boxes(
     scene: &mut Scene,
     parts: &[InlinePaint],
-    alpha: f32,
     shaders: &dyn crate::content::shader::ShaderSource,
     pointer: Option<zgui_geom::Point<DevicePx, Device>>,
 ) -> usize {
@@ -127,10 +124,85 @@ pub fn boxes(
         if !part.style.visible || part.style.paints_nothing() {
             continue;
         }
-        let faded = crate::walk::order::faded(&part.style, alpha);
-        pushed += box_::outer_shadows(scene, &faded, part.placement);
-        pushed += box_::background_and_border(scene, &faded, part.placement, shaders, pointer);
-        pushed += box_::inset_shadows(scene, &faded, part.placement);
+        pushed += box_::outer_shadows(scene, &part.style, part.placement);
+        pushed += box_::background_and_border(scene, &part.style, part.placement, shaders, pointer);
+        pushed += box_::inset_shadows(scene, &part.style, part.placement);
+    }
+    pushed
+}
+
+/// Which of a part's decoration lines are drawn in one pass.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lines {
+    /// The underline and the overline, which go under the glyphs.
+    UnderGlyphs,
+    /// The line through, which goes over them.
+    OverGlyphs,
+}
+
+/// The vertical centre of each decoration line of a part, in absolute device pixels.
+///
+/// An underline sits a tenth of the font size under the baseline, kept inside the descent; an
+/// overline sits at the top of the content area; a line through crosses half the x-height above
+/// the baseline.
+pub fn line_centres(text: &InlineText, thickness: f32) -> [f32; 3] {
+    let half = thickness * 0.5;
+    let below = (text.font_size * 0.1).clamp(half, (text.descent - half).max(half));
+    [
+        text.baseline + below,
+        text.baseline - text.ascent + half,
+        text.baseline - text.x_height * 0.5,
+    ]
+}
+
+/// Emits the decoration lines of every part that one pass draws, and returns how many primitives
+/// were pushed.
+///
+/// A line runs across the part's content, which holds the content of every box inside it.
+pub fn decorations(
+    scene: &mut Scene,
+    parts: &[InlinePaint],
+    which: Lines,
+    clip: ClipId,
+    transform: SpatialId,
+) -> usize {
+    let mut pushed = 0;
+    for part in parts {
+        let style = &part.style.decoration;
+        if !part.style.visible || !style.draws_anything() {
+            continue;
+        }
+        let [under, over, through] = line_centres(&part.text, style.thickness);
+        let band = style.band();
+        let mut draw = |centre: f32| {
+            let rect = Rect::new(
+                zgui_geom::Point::new(DevicePx(part.text.left), DevicePx(centre - band * 0.5)),
+                zgui_geom::Size::new(
+                    DevicePx((part.text.right - part.text.left).max(0.0)),
+                    DevicePx(band),
+                ),
+            );
+            let mut drawn =
+                zgui_scene::Decoration::new(rect, style.thickness, style.color, style.style)
+                    .clipped(clip);
+            drawn.transform = transform.index();
+            pushed += usize::from(scene.push_decoration(drawn).is_some());
+        };
+        match which {
+            Lines::UnderGlyphs => {
+                if style.underline {
+                    draw(under);
+                }
+                if style.overline {
+                    draw(over);
+                }
+            }
+            Lines::OverGlyphs => {
+                if style.line_through {
+                    draw(through);
+                }
+            }
+        }
     }
     pushed
 }
@@ -214,6 +286,26 @@ mod tests {
         assert_eq!(part.text.left, 125.0, "inside the border and the padding");
         assert_eq!(part.text.right, 155.0);
         assert_eq!(part.text.baseline, 68.0);
+    }
+
+    #[test]
+    fn decoration_lines_are_placed_against_the_parts_own_baseline() {
+        let part = paint(&slice(true, true));
+        // The baseline is 68, the ascent 12, the descent 4, the x-height 7, the size 16.
+        let [under, over, through] = super::line_centres(&part.text, 1.0);
+        assert_eq!(under, 68.0 + 1.6, "a tenth of the size under the baseline");
+        assert_eq!(over, 68.0 - 12.0 + 0.5, "at the top of the content area");
+        assert_eq!(through, 68.0 - 3.5, "half the x-height above the baseline");
+
+        let tight = super::InlineText {
+            descent: 1.0,
+            ..part.text
+        };
+        assert_eq!(
+            super::line_centres(&tight, 1.0)[0],
+            68.0 + 0.5,
+            "an underline stays inside a shallow descent"
+        );
     }
 
     #[test]

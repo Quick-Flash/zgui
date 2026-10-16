@@ -141,3 +141,46 @@ fn a_chip_that_changes_colour_is_painted_in_the_new_one() {
     }
     harness.shut_down();
 }
+
+#[test]
+fn a_decorated_chip_draws_its_line_across_its_own_text() {
+    let on = RwSignal::new(false);
+    let mut harness = support::app_with_text(CSS, chip_view(on, "chip under"));
+    harness.settle(8);
+    let window = &harness.app().windows()[0];
+    let line = support::first_line_box(window);
+    let scene = window.scene();
+
+    let lines: Vec<_> = scene
+        .primitives
+        .decorations
+        .iter()
+        .map(|line| (line.color, line.bounds))
+        .collect();
+    assert_eq!(lines.len(), 1, "one underlined chip, one line: {lines:?}");
+    let (color, bounds) = lines[0];
+    assert_eq!(
+        color,
+        [0.0, 1.0, 0.0, 1.0],
+        "in the chip's decoration colour"
+    );
+    assert_eq!(
+        bounds[0] - line.origin.x.0,
+        24.0 + 4.0,
+        "from the start of the chip's text"
+    );
+    assert_eq!(bounds[2], 32.0, "across its four characters");
+    let glyph_bottom = scene
+        .primitives
+        .mono_sprites
+        .iter()
+        .map(|sprite| sprite.bounds[1] + sprite.bounds[3])
+        .fold(0.0_f32, f32::max);
+    let centre = bounds[1] + bounds[3] * 0.5;
+    assert!(
+        centre > glyph_bottom && centre < line.origin.y.0 + line.size.height.0,
+        "under the baseline the glyphs sit on and inside the line: centre {centre}, glyphs end \
+         at {glyph_bottom}, line {line:?}"
+    );
+    harness.shut_down();
+}

@@ -209,6 +209,7 @@ fn a_wavy_underline_is_given_a_band_and_stays_inside_the_line_box() {
         text::Inherited {
             text_fill: None,
             decorations: core::slice::from_ref(&wavy),
+            inline: &[],
         },
         placement,
     );

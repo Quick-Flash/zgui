@@ -696,7 +696,7 @@ impl Pass<'_, '_> {
             }
             out.push(crate::emit::inline::InlinePaint::of(
                 slice,
-                style,
+                crate::walk::order::faded(&style, self.alpha()),
                 computed,
                 content_box,
                 fragment.clip,
