@@ -13,6 +13,7 @@
 //! | `damage` | what each damage level the engine produces makes the frame owe |
 //! | `pass` | the shape of one pass: what it collects, how wide it runs, what it retires |
 //! | `throughput` | how fast a restyle runs, recorded rather than asserted |
+//! | `zero` | keyframe animations with a duration of `0s` |
 
 #[path = "support/mod.rs"]
 mod support;
@@ -39,3 +40,5 @@ mod scope;
 mod settling;
 #[path = "restyle/throughput.rs"]
 mod throughput;
+#[path = "restyle/zero.rs"]
+mod zero;

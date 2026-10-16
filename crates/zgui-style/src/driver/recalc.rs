@@ -528,7 +528,17 @@ fn compute_style<'doc>(
     {
         traversal.note_refreshed(element.index());
     }
-    let hint = element.finish_restyle(context, data, new_styles, important_rules_changed);
+    let mut hint = element.finish_restyle(context, data, new_styles, important_rules_changed);
+    // The engine skips an animation of no length, and cancels one whose duration became `0s`.
+    if !context.shared.traversal_flags.for_animation_only()
+        && let Some(before) =
+            crate::driver::animations::zero::reconcile(context, element, data, old_primary.as_ref())
+        && let Some(after) = data.styles.get_primary()
+        && (!inherited_groups_equal(&before, after)
+            || before.custom_properties().inherited != after.custom_properties().inherited)
+    {
+        hint |= RestyleHint::RECASCADE_SELF;
+    }
     match (old_primary, data.styles.get_primary()) {
         (Some(old), Some(new)) if !engine_hints() => {
             let narrowed = narrowed_children_hint(&old, new, hint);

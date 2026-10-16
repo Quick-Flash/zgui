@@ -25,6 +25,7 @@ use zgui_dom::Node;
 use zgui_profile::{Counter, counter};
 
 use crate::driver::animations::set::key_of;
+use crate::driver::animations::zero;
 use crate::driver::traversal::RecalcStyle;
 
 /// Gives the element's animations new keyframe values when a custom property they read moved
@@ -80,8 +81,9 @@ pub(crate) fn keyframes<'doc>(
     }
 
     // The keyframes take every property they leave out from the style they are built on, so that
-    // style is the element's own without the values its animations write.
-    let base = unanimated(context, element, new);
+    // style is the element's own without the values its animations write. An animation of no
+    // length is built too, as one second long.
+    let base = zero::with_placeholder_durations(&unanimated(context, element, new));
     let mut fresh = ElementAnimationSet::default();
     let mut resolver = StyleResolverForElement::new(
         element,
@@ -91,7 +93,6 @@ pub(crate) fn keyframes<'doc>(
     );
     maybe_start_animations(element, shared, &base, &mut fresh, &mut resolver);
 
-    let now = shared.current_time_for_animations;
     let mut sets = shared.animations.sets.write();
     let Some(set) = sets.get_mut(&key) else {
         return false;
@@ -105,11 +106,17 @@ pub(crate) fn keyframes<'doc>(
             continue;
         };
         // The timing is the animation's own: only the keyframes are new.
-        let is_new = animation.is_new;
-        let iteration = animation.iteration_state.clone();
-        animation.update_from_other(fresh, now);
-        animation.is_new = is_new;
-        animation.iteration_state = iteration;
+        let mut replacement = fresh.clone();
+        replacement.started_at = animation.started_at;
+        replacement.duration = animation.duration;
+        replacement.delay = animation.delay;
+        replacement.fill_mode = animation.fill_mode;
+        replacement.iteration_state = animation.iteration_state.clone();
+        replacement.state = animation.state.clone();
+        replacement.direction = animation.direction;
+        replacement.current_direction = animation.current_direction;
+        replacement.is_new = animation.is_new;
+        *animation = replacement;
         refreshed = true;
     }
     if refreshed {

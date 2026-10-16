@@ -14,6 +14,7 @@ use style::Atom;
 use style::animation::{AnimationSetKey, AnimationState, DocumentAnimationSet};
 
 use crate::driver::animations::tick::fills_forwards;
+use crate::driver::animations::zero;
 
 /// The animations [`hold`] turned back to running, by element row.
 #[must_use = "the held animations stay running until they are released"]
@@ -71,7 +72,7 @@ impl Held {
                     animation.state,
                     AnimationState::Running | AnimationState::Paused(_)
                 );
-                if held && names.contains(&animation.name) && animation.has_ended(now) {
+                if held && names.contains(&animation.name) && zero::ended(animation, now) {
                     animation.state = AnimationState::Finished;
                 }
             }
