@@ -66,7 +66,8 @@ style! { pub ChartStyle =>
     }"
 
     // ---- the key -------------------------------------------------------------------------------
-    ":scope .zui-chart__legend {
+    // Unscoped, as the readout is, so a key drawn outside a chart looks the same as one inside.
+    ".zui-chart__legend {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
@@ -74,16 +75,16 @@ style! { pub ChartStyle =>
         gap: var(--zui-space-lg);
         padding-top: var(--zui-space-md);
     }"
-    ":scope .zui-chart__legend[data-align=\"top\"] {
+    ".zui-chart__legend[data-align=\"top\"] {
         padding-top: 0;
         padding-bottom: var(--zui-space-md);
     }"
-    ":scope .zui-chart__key {
+    ".zui-chart__key {
         display: flex;
         align-items: center;
         gap: calc(var(--zui-space-base) * 1.5);
     }"
-    ":scope .zui-chart__swatch {
+    ".zui-chart__swatch {
         width: 8px;
         height: 8px;
         flex: none;
