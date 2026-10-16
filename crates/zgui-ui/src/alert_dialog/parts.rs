@@ -136,6 +136,9 @@ pub fn AlertDialogAction(
     /// How big it is.
     #[prop(default = ButtonSize::Md)]
     size: ButtonSize,
+    /// Whether it can be pressed. A disabled control does not close the dialog.
+    #[prop(into, default = Signal::stored_local(false))]
+    disabled: Signal<bool, LocalStorage>,
     /// Where to record the button, for a caller that focuses it.
     #[prop(optional)]
     node_ref: Option<NodeRef>,
@@ -154,8 +157,12 @@ pub fn AlertDialogAction(
             node_ref = node_ref.unwrap_or_default(),
             variant = variant,
             size = size,
+            disabled = disabled,
             {..attrs},
             on:click = move |_| {
+                if disabled.get_untracked() {
+                    return;
+                }
                 if let Some(state) = state {
                     state.close();
                 }
@@ -191,6 +198,9 @@ pub fn AlertDialogCancel(
     /// How big it is.
     #[prop(default = ButtonSize::Md)]
     size: ButtonSize,
+    /// Whether it can be pressed. A disabled control does not close the dialog.
+    #[prop(into, default = Signal::stored_local(false))]
+    disabled: Signal<bool, LocalStorage>,
     /// Classes merged after the button's own.
     #[prop(into, optional)]
     class: Classes,
@@ -205,8 +215,12 @@ pub fn AlertDialogCancel(
         Button(
             variant = variant,
             size = size,
+            disabled = disabled,
             {..attrs},
             on:click = move |_| {
+                if disabled.get_untracked() {
+                    return;
+                }
                 if let Some(state) = state {
                     state.close();
                 }

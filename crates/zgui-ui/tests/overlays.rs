@@ -359,6 +359,59 @@ fn the_answers_of_an_alert_dialog_run_the_callers_click_while_it_is_still_open()
 }
 
 #[test]
+fn a_disabled_answer_shows_as_disabled_and_leaves_its_dialog_open() {
+    let harness = Harness::open();
+    let open = RwSignal::new_local(true);
+    let pending = RwSignal::new_local(true);
+    let closed = RwSignal::new_local(true);
+    harness.mount(move || {
+        view! {
+            column {
+                AlertDialog(open = open) {
+                    AlertDialogContent {
+                        AlertDialogTitle {"Delete this project?"}
+                        AlertDialogFooter {
+                            AlertDialogCancel(disabled = pending) {"Keep it"}
+                            AlertDialogAction(disabled = pending) {"Delete"}
+                        }
+                    }
+                }
+                Dialog(open = closed) {
+                    DialogContent {
+                        DialogTitle {"Rename project"}
+                        DialogFooter {DialogClose(disabled = pending) {"Cancel"}}
+                    }
+                }
+            }
+        }
+    });
+    let answer = |label: &str| {
+        every(&harness, "zui-button")
+            .into_iter()
+            .find(|node| harness.window.dom.tree().text_content(*node) == label)
+            .expect("the answer stands")
+    };
+    for label in ["Keep it", "Delete", "Cancel"] {
+        let node = answer(label);
+        assert!(
+            harness.state(node).contains(UiState::DISABLED),
+            "{label} is not disabled"
+        );
+        harness.click(node);
+        settle(&harness);
+    }
+    assert!(open.get_untracked(), "a disabled answer closed the alert dialog");
+    assert!(closed.get_untracked(), "a disabled close control closed the dialog");
+
+    pending.set(false);
+    settle(&harness);
+    harness.click(answer("Delete"));
+    assert!(!open.get_untracked(), "the answer closes the dialog once it is enabled");
+    harness.click(answer("Cancel"));
+    assert!(!closed.get_untracked(), "and so does the close control");
+}
+
+#[test]
 fn a_control_inside_a_dialog_closes_it_without_anything_being_threaded_down_to_it() {
     let harness = Harness::open();
     harness.mount(|| view! { ADialog() });
