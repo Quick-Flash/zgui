@@ -399,3 +399,33 @@ fn a_key_drawn_outside_a_chart_spaces_its_entries() {
         "the two names are {between}px apart, so the key has no swatches or gaps"
     );
 }
+
+/// The height of the one avatar in a row that does not stretch it, under `tokens`.
+fn avatar_height(tokens: &'static str, size: AvatarSize) -> f32 {
+    let row = NodeRef::new();
+    let sheet = format!("{SHEET} .tokens {{ {tokens} }}");
+    let mut stage = Stage::open(&sheet, move || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                row(node_ref = row, class = "tokens", style:align-items = "flex-start") {
+                    Avatar(size = size) { AvatarFallback {"MW"} }
+                }
+            }
+        }
+    });
+    stage.settle();
+    own_box(&stage, row).size.height.0
+}
+
+#[test]
+fn an_avatar_grows_with_its_type_and_its_spacing() {
+    assert!((avatar_height("", AvatarSize::Md) - 32.0).abs() <= SLACK);
+    assert!((avatar_height("", AvatarSize::Sm) - 24.0).abs() <= SLACK);
+    // Tight spacing with ordinary type: the type decides.
+    let dense = "--zui-space-base: 3px; --zui-type-size-sm: 12px; --zui-type-size-xs: 11px";
+    assert!((avatar_height(dense, AvatarSize::Md) - 12.0 * 16.0 / 7.0).abs() <= SLACK);
+    assert!((avatar_height(dense, AvatarSize::Sm) - 22.0).abs() <= SLACK);
+    // Roomy spacing: the space unit decides.
+    let roomy = "--zui-space-base: 5px";
+    assert!((avatar_height(roomy, AvatarSize::Md) - 40.0).abs() <= SLACK);
+}
