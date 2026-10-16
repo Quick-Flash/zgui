@@ -75,6 +75,7 @@ pub(crate) fn resolve<C: MeasureContent>(
     strut: &StrutMetrics,
     available: Size<AvailableSpace>,
     basis: Option<f32>,
+    basis_height: Option<f32>,
 ) -> Boxes {
     let mut boxes = Boxes::default();
     // The nested inline boxes open at this item: the shift of each, summed over the boxes it is
@@ -83,7 +84,18 @@ pub(crate) fn resolve<C: MeasureContent>(
     for (index, item) in generated.items.iter().enumerate() {
         let key = item.role.box_();
         let (geometry, alignment, frame) = match item.role {
-            Role::Atomic(_) => atomic_box(tree, key, item.id, item.offset, available, basis, strut),
+            Role::Atomic(_) => atomic_box(
+                tree,
+                key,
+                item.id,
+                item.offset,
+                available,
+                Size {
+                    width: basis,
+                    height: basis_height,
+                },
+                strut,
+            ),
             Role::StartEdge(_) => {
                 let mut geometry = edge(tree, key, item.id, item.offset, basis, true);
                 let raise = raise_of(tree, key, open.last(), strut);
@@ -195,11 +207,11 @@ fn atomic_box<C: MeasureContent>(
     id: u64,
     offset: usize,
     available: Size<AvailableSpace>,
-    basis: Option<f32>,
+    basis: Size<Option<f32>>,
     strut: &StrutMetrics,
 ) -> (InlineBoxGeometry, Alignment, Option<Frame>) {
-    let (margins, padding, border) = crate::inline::insets::frame_of(tree, key, basis);
-    let measured = atomic::measure(tree, key, Size::NONE, available);
+    let (margins, padding, border) = crate::inline::insets::frame_of(tree, key, basis.width);
+    let measured = atomic::measure(tree, key, Size::NONE, available, basis.height);
     let node = tree.structure().node(key);
     let style = node.style.clone();
     let replaced = node.fc == FormattingContext::Replaced;

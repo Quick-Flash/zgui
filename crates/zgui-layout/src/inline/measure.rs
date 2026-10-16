@@ -58,6 +58,8 @@ pub(crate) struct Ask {
     pub(crate) axis: RequestedAxis,
     /// Whether this answer is the one that will be kept.
     pub(crate) final_pass: bool,
+    /// The block size a percentage height of an atomic inline resolves against, if definite.
+    pub(crate) basis_height: Option<f32>,
 }
 
 impl Ask {
@@ -117,6 +119,8 @@ pub(crate) struct ProbeMemo {
     generation: u32,
     /// The width the probe broke at, as bits, or the two intrinsic constraints.
     constraint: u32,
+    /// The probe's [`Ask::basis_height`], as bits.
+    basis_height: Option<u32>,
     generated: Arc<Generated>,
     root_strut: zgui_text::StrutMetrics,
     boxes: boxes::Boxes,
@@ -152,7 +156,9 @@ pub(crate) fn compute<C: MeasureContent>(
         let state = tree.state_mut(key);
         match state.probe_memo.take() {
             Some(memo)
-                if memo.generation == generation && memo.constraint == constraint_bits(&ask) =>
+                if memo.generation == generation
+                    && memo.constraint == constraint_bits(&ask)
+                    && memo.basis_height == ask.basis_height.map(f32::to_bits) =>
             {
                 Some(memo)
             }
@@ -198,7 +204,14 @@ pub(crate) fn compute<C: MeasureContent>(
             let root_strut = scale_strut(tree.content().strut(&generated.root), scale);
             // Everything on the line that is not a glyph, at the size and the alignment it
             // currently has.
-            let boxes = boxes::resolve(tree, &generated, &root_strut, ask.available, basis);
+            let boxes = boxes::resolve(
+                tree,
+                &generated,
+                &root_strut,
+                ask.available,
+                basis,
+                ask.basis_height,
+            );
             let run_extents = strut::of_runs(tree.content(), &generated.runs, scale);
             let content = ParagraphContent {
                 text: &generated.text,
@@ -271,6 +284,7 @@ pub(crate) fn compute<C: MeasureContent>(
         tree.state_mut(key).probe_memo = Some(Box::new(ProbeMemo {
             generation,
             constraint: constraint_bits(&ask),
+            basis_height: ask.basis_height.map(f32::to_bits),
             generated,
             root_strut,
             boxes,

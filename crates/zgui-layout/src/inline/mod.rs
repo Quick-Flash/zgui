@@ -61,6 +61,7 @@ use crate::tree::LayoutTree;
 /// Two very different things arrive here. An inline formatting context is laid out in full, because
 /// its size *is* the lines it broke into. Replaced content — an image, a video, an embedded surface
 /// — is asked of whoever is driving the pass, because this engine does not own it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_leaf<C: MeasureContent>(
     tree: &mut LayoutTree<'_, C>,
     node: NodeId,
@@ -68,6 +69,7 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
     available: Size<cephal::AvailableSpace>,
     run_mode: RunMode,
     axis: RequestedAxis,
+    basis_height: Option<f32>,
     block: Option<&mut BlockContext<'_>>,
 ) -> Measured {
     let key = from_node_id(node);
@@ -93,6 +95,7 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
                 run_mode,
                 axis,
                 final_pass: run_mode == RunMode::PerformLayout,
+                basis_height,
             },
             block,
         );

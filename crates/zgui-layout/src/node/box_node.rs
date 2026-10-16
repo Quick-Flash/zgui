@@ -59,6 +59,13 @@ pub struct BoxNode {
     pub text: Option<Box<str>>,
     /// What this box's own fragment paints. Rare payloads live in sparse store columns.
     pub painted: PaintedContent,
+    /// On a box of an inline formatting context: whether an atomic inline in its content sizes
+    /// its block axis with a percentage.
+    ///
+    /// Such a percentage resolves against the block size of the context root's containing block,
+    /// so the root keeps that size in its layout question. Kept by
+    /// [`percent`](crate::boxtree::percent).
+    pub atomic_percent_block: bool,
 }
 
 impl BoxNode {
@@ -77,6 +84,7 @@ impl BoxNode {
             block_level: false,
             text: None,
             painted: PaintedContent::Box,
+            atomic_percent_block: false,
         }
     }
 

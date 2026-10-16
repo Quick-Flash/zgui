@@ -14,6 +14,9 @@ pub(crate) struct EngineStyleId(u32);
 #[derive(Debug)]
 struct Entry {
     style: cephal::Style,
+    /// [`cephal::Style::parent_size_dependency`], computed once per distinct style because the
+    /// engine asks for it on every child query.
+    dependency: cephal::Size<bool>,
     refs: u32,
 }
 
@@ -36,6 +39,7 @@ impl EngineStyles {
             return EngineStyleId(index);
         }
         let entry = Entry {
+            dependency: style.parent_size_dependency(),
             style: style.clone(),
             refs: 1,
         };
@@ -77,6 +81,17 @@ impl EngineStyles {
             .as_ref()
             .expect("a live engine style")
             .style
+    }
+
+    /// The style one identifier names, and the parent sizes it resolves against.
+    pub(crate) fn with_dependency(
+        &self,
+        id: EngineStyleId,
+    ) -> (&cephal::Style, cephal::Size<bool>) {
+        let entry = self.entries[id.0 as usize]
+            .as_ref()
+            .expect("a live engine style");
+        (&entry.style, entry.dependency)
     }
 
     /// How many distinct styles are held.

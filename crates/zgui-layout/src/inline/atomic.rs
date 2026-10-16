@@ -34,16 +34,23 @@ pub struct Constraint {
     available_width: SpaceKey,
     /// The space available on the block axis.
     available_height: SpaceKey,
+    /// The block size a percentage height resolves against, if definite.
+    basis_height: Option<u32>,
 }
 
 impl Constraint {
     /// The constraint a measurement was taken under.
-    pub fn new(known: Size<Option<f32>>, available: Size<AvailableSpace>) -> Self {
+    pub fn new(
+        known: Size<Option<f32>>,
+        available: Size<AvailableSpace>,
+        basis_height: Option<f32>,
+    ) -> Self {
         Self {
             known_width: known.width.map(f32::to_bits),
             known_height: known.height.map(f32::to_bits),
             available_width: SpaceKey::new(available.width),
             available_height: SpaceKey::new(available.height),
+            basis_height: basis_height.map(f32::to_bits),
         }
     }
 }
@@ -164,13 +171,17 @@ impl AtomicAnswers {
 }
 
 /// Measures an atomic inline by running a nested layout of its own subtree.
+///
+/// `basis_height` is the block size of the containing block, which a percentage height resolves
+/// against. It is separate from `available`, which is the room the line offers.
 pub(crate) fn measure<C: MeasureContent>(
     tree: &mut LayoutTree<'_, C>,
     key: BoxKey,
     known: Size<Option<f32>>,
     available: Size<AvailableSpace>,
+    basis_height: Option<f32>,
 ) -> Measured {
-    let constraint = Constraint::new(known, available);
+    let constraint = Constraint::new(known, available, basis_height);
     let held = tree
         .state(key)
         .and_then(|state| state.atomic.as_deref())
@@ -188,7 +199,10 @@ pub(crate) fn measure<C: MeasureContent>(
             axis: RequestedAxis::Both,
             known_dimensions: known,
             known_dimensions_are_definite: Size::TRUE,
-            parent_size: available.into_options(),
+            parent_size: Size {
+                width: available.width.into_option(),
+                height: basis_height,
+            },
             available_space: available,
             vertical_margins_are_collapsible: Line::FALSE,
             context_key: 0,
@@ -224,6 +238,7 @@ mod tests {
                 width,
                 height: AvailableSpace::MaxContent,
             },
+            None,
         )
     }
 

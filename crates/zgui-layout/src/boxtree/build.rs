@@ -467,9 +467,12 @@ impl Builder<'_> {
                 after = Some(child.key);
             }
         }
+        let atomic_percent_block = fc == FormattingContext::Inline
+            && crate::boxtree::percent::of_children(self.store, &layout_children);
         let node = self.store.get_mut(key).expect("a live box");
         node.children = layout_children;
         node.paint_children = paint_children;
+        node.atomic_percent_block = atomic_percent_block;
     }
 
     /// Blockifies one flex or grid item in place, and reports what it became.

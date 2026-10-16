@@ -17,6 +17,7 @@ use cephal::{AvailableSpace, MaybeMath, Rect, Size};
 
 use crate::key::from_node_id;
 use crate::measure::MeasureContent;
+use crate::node::kind::BoxKind;
 use crate::tree::LayoutTree;
 
 /// Lays out one leaf, measuring its content through the tree.
@@ -177,6 +178,7 @@ pub(crate) fn compute<C: MeasureContent>(
                     - prepared.content_box_inset.vertical_axis_sum()
             }),
     };
+    let basis_height = percentage_basis_height(tree, node, parent_size, &prepared);
     // The measurement takes the tree, because an atomic inline's content is a nested layout of
     // boxes this tree owns.
     let measured = crate::inline::measure_leaf(
@@ -191,6 +193,7 @@ pub(crate) fn compute<C: MeasureContent>(
         measure_space,
         run_mode,
         inputs.axis,
+        basis_height,
         block,
     );
     let measured_size = measured.size;
@@ -241,6 +244,32 @@ pub(crate) fn compute<C: MeasureContent>(
             && size.height == 0.0
             && measured_size.height == 0.0,
     }
+}
+
+/// The block size a percentage height of an atomic inline in this context resolves against.
+///
+/// That is the height of the containing block. An anonymous inline root stands in for the block
+/// container around it, so the parent's size is the basis. Another context root is its own block
+/// container, so its definite content height is the basis. A context without such an atomic gets
+/// nothing, which keeps its answers independent of any height.
+fn percentage_basis_height<C: MeasureContent>(
+    tree: &LayoutTree<'_, C>,
+    node: NodeId,
+    parent_size: Size<Option<f32>>,
+    prepared: &Prepared,
+) -> Option<f32> {
+    let box_node = tree.structure().node(from_node_id(node));
+    if !box_node.atomic_percent_block {
+        return None;
+    }
+    if box_node.kind == BoxKind::AnonymousInlineRoot {
+        return parent_size.height;
+    }
+    prepared.node_size.height.map(|height| {
+        (height.maybe_clamp(prepared.node_min_size.height, prepared.node_max_size.height)
+            - prepared.content_box_inset.vertical_axis_sum())
+        .max(0.0)
+    })
 }
 
 /// What the style and the inputs decide before the content is asked.

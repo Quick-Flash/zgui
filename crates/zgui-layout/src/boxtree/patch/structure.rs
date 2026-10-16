@@ -24,6 +24,7 @@ pub fn detach(store: &mut LayoutStore, key: BoxKey) -> u32 {
     }
     let removed = remove_subtree(store, key);
     mark_dirty(store, parent);
+    crate::boxtree::percent::refresh(store, parent);
     removed
 }
 
@@ -94,6 +95,7 @@ pub fn replace(store: &mut LayoutStore, old: BoxKey, new: BoxKey) -> bool {
     }
     remove_subtree(store, old);
     mark_dirty(store, parent);
+    crate::boxtree::percent::refresh(store, parent);
     true
 }
 
