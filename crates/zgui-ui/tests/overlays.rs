@@ -1841,6 +1841,34 @@ fn a_command_palette_runs_what_enter_lands_on_and_stays_where_it_is() {
 }
 
 #[test]
+fn a_command_palette_draws_no_combobox_frame_and_no_tick() {
+    let harness = Harness::open();
+    harness.mount(|| {
+        view! {
+            Command {
+                CommandInput(placeholder = "Type a command…", label = "Command")
+                CommandList {
+                    CommandItem(value = "a") {"Calendar"}
+                    CommandItem(value = "b") {"Search"}
+                }
+            }
+        }
+    });
+    assert!(find(&harness, "zui-input-group").is_none(), "no frame");
+    assert!(find(&harness, "zui-combobox__mark").is_none(), "no chevron");
+    let field = expect(&harness, "zui-command__input");
+    assert_eq!(harness.semantics(field).role, Role::ComboBox);
+
+    harness.press(field, NamedKey::Enter);
+    settle(&harness);
+    assert!(
+        find(&harness, "zui-select__indicator").is_none(),
+        "a command that ran is not marked as chosen"
+    );
+    assert_eq!(every(&harness, "zui-command__item").len(), 2);
+}
+
+#[test]
 fn a_command_dialog_is_a_labelled_dialog_with_no_heading_on_the_surface() {
     // A palette's field is its heading, so the name is written rather than shown — and a dialog
     // with neither would be announced as an unlabelled dialog.

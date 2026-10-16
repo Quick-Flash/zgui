@@ -1,6 +1,7 @@
 //! Everything that can be done, searched by typing.
 
 mod input;
+mod item;
 mod list;
 mod style;
 
@@ -8,11 +9,8 @@ mod style;
 pub use crate::combobox::ComboboxEmpty as CommandEmpty;
 /// The props of [`CommandEmpty`].
 pub use crate::combobox::ComboboxEmptyProps as CommandEmptyProps;
-/// One command. A [`ComboboxItem`](crate::ComboboxItem), whose `on_select` is what running it is.
-pub use crate::combobox::ComboboxItem as CommandItem;
-/// The props of [`CommandItem`].
-pub use crate::combobox::ComboboxItemProps as CommandItemProps;
 pub use crate::command::input::{CommandInput, CommandInputProps};
+pub use crate::command::item::{CommandItem, CommandItemProps};
 pub use crate::command::list::{
     CommandDialog, CommandDialogProps, CommandGroup, CommandGroupProps, CommandList,
     CommandListProps,

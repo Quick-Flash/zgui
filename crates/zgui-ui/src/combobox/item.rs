@@ -62,6 +62,47 @@ pub fn ComboboxItem(
     /// What it shows.
     children: ChildrenFn,
 ) -> impl IntoView {
+    view! {
+        ComboboxEntry(
+            value = value,
+            text = text,
+            disabled = disabled,
+            on_select = on_select,
+            mark = true,
+            {..attrs},
+            class = class
+        ) {
+            {children.view()}
+        }
+    }
+}
+
+/// One option of any listbox that a typed filter narrows: a combobox's, or a palette's.
+///
+/// While the filter excludes it, nothing is mounted and nothing is registered.
+#[component]
+pub(crate) fn ComboboxEntry(
+    /// What choosing it reports.
+    value: String,
+    /// What it reads as and is searched by; the value when `None`.
+    #[prop(optional)]
+    text: Option<String>,
+    /// Whether it can be chosen.
+    disabled: Signal<bool, LocalStorage>,
+    /// Told when it is chosen.
+    #[prop(optional)]
+    on_select: Option<zgui::reactive::UnsyncCallback<()>>,
+    /// Whether the chosen option shows a tick.
+    mark: bool,
+    /// Classes merged after the option's own.
+    #[prop(into, optional)]
+    class: Classes,
+    /// Anything else the caller forwarded.
+    #[prop(attrs)]
+    attrs: Attrs,
+    /// What it shows.
+    children: ChildrenFn,
+) -> impl IntoView {
     install_stylesheet(SHEET, ComboboxStyle::CSS);
     // A combobox's rows are a select's rows, so they are drawn by a select's rules — which have to
     // be installed here as well. A component that borrowed the classes and not the sheet would be
@@ -94,6 +135,7 @@ pub fn ComboboxItem(
                         text = reads_as,
                         disabled = disabled,
                         on_select = on_select,
+                        mark = mark,
                         class = class,
                         {..attrs}
                     ) {
@@ -120,6 +162,8 @@ fn ComboboxOption(
     disabled: Signal<bool, LocalStorage>,
     /// Told when it is chosen.
     on_select: Option<zgui::reactive::UnsyncCallback<()>>,
+    /// Whether the chosen option shows a tick.
+    mark: bool,
     /// Classes merged after the option's own.
     #[prop(into, optional)]
     class: Classes,
@@ -177,11 +221,13 @@ fn ComboboxOption(
             {..attrs},
             class = class
         ) {
-            box(class = "zui-select__indicator") {
-                Show(when = chosen, fallback = || ()) {
-                    Icon(icon = CHECK)
+            if move || mark {
+                box(class = "zui-select__indicator") {
+                    Show(when = chosen, fallback = || ()) {
+                        Icon(icon = CHECK)
+                    }
                 }
-            }
+            } else {}
             {children.into_view_once()}
         }
     }
