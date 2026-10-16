@@ -67,7 +67,10 @@ impl core::fmt::Debug for Editors {
 }
 
 /// What an event did to an editable element.
-#[derive(Clone, Debug, Default, PartialEq)]
+///
+/// The debug form gives the length of the text and of the clipboard text, and not the text,
+/// because the text can be a password.
+#[derive(Clone, Default, PartialEq)]
 pub struct Edited {
     /// Whether the model took the event.
     pub handled: bool,
@@ -88,6 +91,26 @@ pub struct Edited {
     /// a field that announced a value change for it would make every keystroke look like an edit
     /// to whatever is listening.
     pub value: Option<String>,
+}
+
+impl core::fmt::Debug for Edited {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use crate::host::Redacted;
+        formatter
+            .debug_struct("Edited")
+            .field("handled", &self.handled)
+            .field("selection", &self.selection)
+            .field(
+                "clipboard",
+                &self.clipboard.as_ref().map(|text| Redacted(text.len())),
+            )
+            .field("paste", &self.paste)
+            .field(
+                "value",
+                &self.value.as_ref().map(|text| Redacted(text.len())),
+            )
+            .finish()
+    }
 }
 
 /// What loading a value into an element did.
