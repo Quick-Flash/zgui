@@ -234,3 +234,44 @@ fn a_navigation_menu_keeps_its_own_height_in_a_column() {
         root.size.height.0
     );
 }
+
+#[test]
+fn a_leading_icon_before_a_bare_label_keeps_the_full_gap() {
+    let bare = NodeRef::new();
+    let wrapped = NodeRef::new();
+    let trailing = NodeRef::new();
+    let mut stage = Stage::open(SHEET, move || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                column(class = "page", style:align-items = "flex-start") {
+                    Button(node_ref = bare) { Icon(icon = CHECK_CIRCLE) "Bare label" }
+                    Button(node_ref = wrapped) { Icon(icon = CHECK_CIRCLE) text {"Wrapped label"} }
+                    Button(node_ref = trailing) { text {"Trailing"} Icon(icon = CHECK_CIRCLE) }
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let inset = |button: NodeRef, label: &str| {
+        text_box(&stage, label).origin.x.0 - own_box(&stage, button).origin.x.0
+    };
+    let bare_inset = inset(bare, "Bare label");
+    let wrapped_inset = inset(wrapped, "Wrapped label");
+    assert!(
+        (bare_inset - wrapped_inset).abs() <= SLACK,
+        "a bare label starts {bare_inset}px into its button and a wrapped one {wrapped_inset}px"
+    );
+    // The leading mark sits 12px in and is 16px wide; the label follows after an 8px gap.
+    assert!(
+        (bare_inset - 36.0).abs() <= SLACK,
+        "a bare label starts {bare_inset}px into its button, and 36px is the leading inset"
+    );
+    let label = text_box(&stage, "Trailing");
+    let button = own_box(&stage, trailing);
+    let after = right(button) - right(label);
+    assert!(
+        (after - 36.0).abs() <= SLACK,
+        "a label before a trailing mark ends {after}px from the button's end"
+    );
+}
