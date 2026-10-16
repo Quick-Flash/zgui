@@ -823,7 +823,11 @@ impl Pass<'_, '_> {
                     .input
                     .store
                     .custom_reference(fragment.box_)
-                    .map_or(0, |(token, _, _)| self.input.custom.revision(token)),
+                    .map_or(0, |(token, _, _)| {
+                        // The token is part of the signature: a new implementation starts at
+                        // the same revisions the old one had.
+                        (u64::from(token) << 32) | self.input.custom.revision(token)
+                    }),
                 _ => 0,
             },
             pointer: self.pointer_signature(style_ref),

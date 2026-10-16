@@ -152,3 +152,75 @@ impl zgui_elements::tag::Tag for Item {
         zgui_interned::ElementName::new("item")
     }
 }
+
+/// A leaf measured at a fixed height of its own.
+struct Tall(f32);
+
+impl CustomElement for Tall {
+    fn layout(&mut self, cx: &mut CustomLayoutCx<'_>) -> CustomMeasured {
+        CustomMeasured {
+            width: cx.known_width.unwrap_or(40.0),
+            height: self.0,
+            ..CustomMeasured::default()
+        }
+    }
+
+    fn paint(&mut self, _painter: &mut ScenePainter<'_>) {}
+}
+
+/// The node of the first element named `name`.
+fn node_named(window: &zgui_runtime::Window, name: &str) -> Option<zgui_dom::NodeKey> {
+    let document = window.document().borrow();
+    let layout = window.layout().borrow();
+    layout.keys().into_iter().find_map(|key| {
+        let source = layout.node(key).source?;
+        let index = document.store().index_of(source)?;
+        (document.store().core(index).local_name().as_str() == name).then_some(source)
+    })
+}
+
+/// A reactive hole that runs again builds the same element type in place: the node stays and its
+/// implementation token changes. The box must follow the new implementation.
+#[test]
+fn a_custom_element_rebuilt_in_place_is_measured_by_its_new_implementation() {
+    use zgui_reactive::prelude::{Get, Set};
+
+    let generation = zgui_reactive::RwSignal::new(0u32);
+    let mut app = app(
+        "root { display: block; width: 400px; height: 300px }",
+        move |cx: &mut BuildCx<'_>| {
+            let hole = zgui_view::flow::Dynamic::new(move || {
+                let height = if generation.get() == 0 { 24.0 } else { 48.0 };
+                let (view, _handle) = zgui_custom::custom(Tall(height));
+                zgui_view::AnyView::new(view)
+            });
+            Box::new(
+                zgui_elements::r#box()
+                    .class("root")
+                    .child(hole)
+                    .into_view()
+                    .build(cx),
+            )
+        },
+    );
+    app.settle(16);
+    let before = {
+        let window = &app.app_mut().windows_mut()[0];
+        assert_eq!(box_of(window, "custom").map(|b| b.3), Some(24.0));
+        node_named(window, "custom").expect("the custom element")
+    };
+
+    generation.set(1);
+    app.settle(16);
+    let window = &app.app_mut().windows_mut()[0];
+    assert_eq!(
+        node_named(window, "custom"),
+        Some(before),
+        "the hole rebuilt the element in place"
+    );
+    assert_eq!(
+        box_of(window, "custom").map(|b| b.3),
+        Some(48.0),
+        "the box still answers with the old implementation"
+    );
+}
