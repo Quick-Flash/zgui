@@ -271,7 +271,14 @@ pub(crate) fn place(
             .content_hash()
     };
 
-    let local_ink = ink::of(&node.style, border_box, scale);
+    // A nested inline box paints nothing of its own: the lines it is on paint its parts. Its ink is
+    // empty, so it owes no damage and reaches no ink test.
+    let nested_inline = node.is_nested_inline();
+    let local_ink = if nested_inline {
+        Rect::new(border_box.origin, Size::new(DevicePx(0.0), DevicePx(0.0)))
+    } else {
+        ink::of(&node.style, border_box, scale)
+    };
     let device_ink = match matrix {
         Some(matrix) => transform::transformed_bounds(&matrix, local_ink),
         None => local_ink,
@@ -342,7 +349,7 @@ pub(crate) fn place(
     if is_sticky {
         flags = flags.union(FragmentFlags::IS_STICKY);
     }
-    if ink::paints_nothing(&node.style, border) {
+    if nested_inline || ink::paints_nothing(&node.style, border) {
         flags = flags.union(FragmentFlags::PAINTS_NOTHING);
     }
 

@@ -576,11 +576,9 @@ impl Pass<'_, '_> {
     where
         Self: 'e,
     {
-        let radii = crate::lower::border::radii_of(
-            &self.input.store.node(fragment.box_).style,
-            fragment.border_box,
-            self.input.scale,
-        );
+        let node = self.input.store.node(fragment.box_);
+        let radii =
+            crate::lower::border::radii_of(&node.style, fragment.border_box, self.input.scale);
         Emission {
             style,
             shaders: self.input.shaders,
@@ -606,6 +604,7 @@ impl Pass<'_, '_> {
             decorations,
             text_fill,
             inline,
+            nested_inline: fragment.kind == FragmentKind::Box && node.is_nested_inline(),
             glyphs: self.input.glyphs,
             glyph_placements: self.input.glyph_placements,
             highlights: self.input.highlights,

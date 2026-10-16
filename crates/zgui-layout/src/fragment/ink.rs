@@ -92,8 +92,8 @@ pub fn of_line(
 /// Whether a nested inline box paints anything on the line it is on.
 ///
 /// `root` is the style of the box that holds the lines, and `slice` is the part of the nested box
-/// on the line. The box paints when it draws a background, a border or a shadow, a decoration line,
-/// a text shadow of its own, or moves its text off the baseline.
+/// on the line. The box paints when it draws a background, a border, a shadow or an outline, a
+/// decoration line, a text shadow of its own, or moves its text off the baseline.
 pub fn inline_effects(
     style: &ComputedStyle,
     root: &ComputedStyle,
@@ -119,6 +119,11 @@ pub fn inline_effects(
             .iter()
             .any(|image| !matches!(image, ImageValue::None))
         || !style.get_effects().box_shadow.0.is_empty()
+        || {
+            let outline = style.get_outline();
+            outline.outline_style != OutlineStyleValue::none()
+                && outline.outline_width.0.to_f32_px() > 0.0
+        }
         || !style.get_text().text_decoration_line.is_empty()
         || style.get_inherited_text().text_shadow != root.get_inherited_text().text_shadow
 }

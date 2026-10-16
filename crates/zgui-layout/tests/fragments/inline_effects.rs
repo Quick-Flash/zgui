@@ -89,6 +89,7 @@ fn a_decoration_or_a_text_shadow_of_its_own_flags_the_line() {
         "text-shadow: 1px 1px red",
         "border: 1px solid black",
         "box-shadow: 0 0 2px black",
+        "outline: 2px solid black",
     ] {
         let (store, fixture) = laid(declarations);
         assert!(
@@ -98,4 +99,19 @@ fn a_decoration_or_a_text_shadow_of_its_own_flags_the_line() {
             "{declarations}"
         );
     }
+}
+
+#[test]
+fn a_nested_inline_box_paints_nothing_of_its_own() {
+    // The lines paint its parts. A box of its own would put its shadow and its outline at the
+    // place layout put the box, which is the start of the context's content.
+    let (store, fixture) = laid("box-shadow: 0 0 8px black; outline: 2px solid black");
+    let span = box_named(&store, &fixture, "span");
+    let own = store
+        .fragment(store.fragments_of_box(span)[0])
+        .expect("the span has a fragment");
+    assert_eq!(own.kind, FragmentKind::Box);
+    assert!(own.flags.contains(FragmentFlags::PAINTS_NOTHING));
+    assert!(own.local_ink.is_empty(), "{:?}", own.local_ink);
+    assert!(own.ink.is_empty(), "{:?}", own.ink);
 }

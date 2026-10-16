@@ -113,4 +113,16 @@ impl BoxNode {
     pub fn is_leaf(&self) -> bool {
         self.children.is_empty() && self.paint_children.is_empty()
     }
+
+    /// Whether this is a nested inline box: a box inside an inline formatting context that is
+    /// not an atomic inline.
+    ///
+    /// Such a box has no rectangle of its own size. The lines it is on paint its parts.
+    pub fn is_nested_inline(&self) -> bool {
+        self.parent_fc == FormattingContext::Inline
+            && !matches!(
+                self.fc,
+                FormattingContext::Atomic | FormattingContext::Replaced | FormattingContext::Custom
+            )
+    }
 }

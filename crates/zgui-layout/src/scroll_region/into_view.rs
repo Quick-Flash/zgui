@@ -7,7 +7,6 @@
 use zgui_dom::side::BoxKey;
 use zgui_geom::{Device, DevicePx, Point, Rect, Size};
 
-use crate::node::kind::FormattingContext;
 use crate::tree::store::LayoutStore;
 
 /// `target`'s border box in `container`'s unscrolled content space, and the size of the
@@ -30,12 +29,7 @@ pub fn target_in(
     let mut key = target;
     while key != container {
         let node = store.get(key)?;
-        if node.parent_fc == FormattingContext::Inline
-            && !matches!(
-                node.fc,
-                FormattingContext::Atomic | FormattingContext::Replaced | FormattingContext::Custom
-            )
-        {
+        if node.is_nested_inline() {
             return None;
         }
         let layout = store.layout_of(key)?;

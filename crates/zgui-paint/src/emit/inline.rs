@@ -131,6 +131,17 @@ pub fn boxes(
     pushed
 }
 
+/// Emits the outline of every part, in tree order, and returns how many primitives were pushed.
+///
+/// Drawn after the glyphs, as a box's outline is drawn after its content.
+pub fn outlines(scene: &mut Scene, parts: &[InlinePaint]) -> usize {
+    parts
+        .iter()
+        .filter(|part| part.style.visible && part.style.outline.is_some())
+        .map(|part| box_::outline(scene, &part.style, part.placement))
+        .sum()
+}
+
 /// Which of a part's decoration lines are drawn in one pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lines {

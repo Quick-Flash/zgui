@@ -83,6 +83,9 @@ pub struct Emission<'a> {
     ///
     /// [`FragmentFlags::INLINE_EFFECTS`]: zgui_layout::fragment::FragmentFlags::INLINE_EFFECTS
     pub inline: &'a [crate::emit::inline::InlinePaint],
+    /// Whether the fragment is the box of a nested inline box, whose decorations and outline the
+    /// lines it is on paint.
+    pub nested_inline: bool,
     /// Where glyphs come from.
     pub glyphs: &'a dyn GlyphSource,
     /// Where a run a custom element shaped itself gets its tiles.
@@ -138,8 +141,9 @@ pub(crate) fn fragment_tracked(
     let style = faded(emission.style, emission.alpha);
     let mut pushed = 0;
     // A box whose decorations draw nothing at all is the overwhelming majority of containers, and
-    // asking once is cheaper than three calls that each resolve a paint and push no primitive.
-    if !style.paints_nothing() {
+    // asking once is cheaper than three calls that each resolve a paint and push no primitive. A
+    // nested inline box draws its decorations on the lines it is on.
+    if !style.paints_nothing() && !emission.nested_inline {
         pushed += box_::outer_shadows(scene, &style, emission.box_placement);
         pushed += box_::background_and_border(
             scene,
@@ -161,7 +165,7 @@ pub(crate) fn fragment_tracked(
 
 /// Emits a fragment's outline, which is drawn after its descendants.
 pub fn outline(scene: &mut Scene, emission: &Emission<'_>) -> usize {
-    if vanished(emission.alpha) {
+    if vanished(emission.alpha) || emission.nested_inline {
         return 0;
     }
     let style = faded(emission.style, emission.alpha);
@@ -232,6 +236,7 @@ fn content_tracked(
                 },
                 emission.text_placement,
             );
+            pushed += crate::emit::inline::outlines(scene, emission.inline);
             pushed
                 + marks(
                     scene,
