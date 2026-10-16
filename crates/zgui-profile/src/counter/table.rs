@@ -219,6 +219,12 @@ counters! {
     /// makes a scene rebuild that has quietly become the dominant cost visible at all.
     BoundsTreeInserts => bounds_tree_inserts, Group::BackendNeutral;
 
+    /// Rounded clip tests that change pixels and could not be applied.
+    ///
+    /// One draw call applies two rounded tests. A clip chain with three or more that each cut a
+    /// corner inside the clipped area keeps the two innermost and draws the rest square.
+    ClipRoundedTestsDropped => clip_rounded_tests_dropped, Group::BackendNeutral;
+
     /// Hit-test entries updated in place.
     HitEntriesUpdated => hit_entries_updated, Group::BackendNeutral;
 

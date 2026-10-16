@@ -5,6 +5,8 @@ use zgui_geom::{Corners, Device, DevicePx, Matrix4, Point, Rect, Size, Vec2};
 /// A translation of no distance, which is what a link that nothing has carried holds.
 const UNMOVED: Size<DevicePx, Device> = Size::ZERO;
 
+use zgui_profile::{Counter, counter};
+
 use crate::clip::link::{ClipLink, ClipNode};
 use crate::clip::resolved::{ResolvedClip, RoundedTest};
 use crate::id::ClipId;
@@ -128,10 +130,9 @@ impl ClipTable {
 
     /// The chain flattened into what a single draw call binds.
     ///
-    /// Links beyond what one draw call can apply are *ignored here* and reported by
-    /// [`ClipTable::needs_group_target`] instead: silently applying the first two rounded tests of
-    /// three would be a wrong pixel with no error, so the overflow is a question the caller has to
-    /// have asked.
+    /// A chain of more than two rounded links keeps the tests that change pixels inside its
+    /// intersection rectangle, the two innermost of them at most, and counts the rest in
+    /// [`ResolvedClip::dropped`]. [`ClipTable::needs_group_target`] names such chains.
     ///
     /// Every link is read as it was interned, so a link measured in a transformed coordinate
     /// system stays in that system's coordinates. A caller comparing against device pixels — which
@@ -162,8 +163,9 @@ impl ClipTable {
         let mut resolved = ResolvedClip::unbounded();
         let mut rounded = 0usize;
         // Walk towards the root instead of materialising and reversing the chain. Intersections
-        // commute; rounded tests are shifted down so the two outermost survive; and the first mask
-        // seen is the innermost one, which is the one the former outer-to-inner overwrite kept.
+        // commute; up to two rounded tests are kept, and a third hands the chain to
+        // `resolve_deep`; and the first mask seen is the innermost one, which is the one the
+        // former outer-to-inner overwrite kept.
         let mut cursor = id;
         while let Some(node) = self.get(cursor) {
             let ClipNode::Link { link, parent, .. } = node else {
@@ -180,25 +182,11 @@ impl ClipTable {
                     let (rect, radii) = placed(rect, radii, matrix_of(space));
                     intersect(&mut resolved.aabb, rect);
                     if link.is_rounded() {
-                        let test = RoundedTest {
-                            rect: [
-                                rect.origin.x.0,
-                                rect.origin.y.0,
-                                rect.size.width.0,
-                                rect.size.height.0,
-                            ],
-                            radii: [
-                                radii.top_left.x.0,
-                                radii.top_left.y.0,
-                                radii.top_right.x.0,
-                                radii.top_right.y.0,
-                                radii.bottom_right.x.0,
-                                radii.bottom_right.y.0,
-                                radii.bottom_left.x.0,
-                                radii.bottom_left.y.0,
-                            ],
-                            shape: shape.get(),
-                        };
+                        if rounded == Self::MAX_INLINE_ROUNDED {
+                            // A third rounded link: rare, and resolved by a walk of its own.
+                            return self.resolve_deep(id, matrix_of);
+                        }
+                        let test = test_of(rect, radii, shape.get());
                         if rounded == 0 {
                             resolved.rounded[0] = test;
                             rounded = 1;
@@ -218,6 +206,59 @@ impl ClipTable {
             cursor = *parent;
         }
         resolved.rounded_count = rounded as u32;
+        resolved
+    }
+
+    /// [`ClipTable::resolve_placed`] for a chain of more than two rounded links.
+    ///
+    /// Every test is collected, and each test that cannot change a pixel inside the final
+    /// intersection rectangle is left out: a box clipped well inside a rounded ancestor is clear
+    /// of that ancestor's corners. When more than two tests remain, the two innermost are kept and
+    /// [`ResolvedClip::dropped`] counts the others.
+    fn resolve_deep(
+        &self,
+        id: ClipId,
+        matrix_of: &dyn Fn(SpatialId) -> Option<Matrix4>,
+    ) -> ResolvedClip {
+        let mut resolved = ResolvedClip::unbounded();
+        // Innermost first.
+        let mut tests: smallvec::SmallVec<[RoundedTest; 8]> = smallvec::SmallVec::new();
+        let mut cursor = id;
+        while let Some(ClipNode::Link { link, parent, .. }) = self.get(cursor) {
+            match *link {
+                ClipLink::RoundedRect {
+                    rect,
+                    radii,
+                    shape,
+                    space,
+                } => {
+                    let (rect, radii) = placed(rect, radii, matrix_of(space));
+                    intersect(&mut resolved.aabb, rect);
+                    if link.is_rounded() {
+                        tests.push(test_of(rect, radii, shape.get()));
+                    }
+                }
+                ClipLink::Mask { tile, .. } => {
+                    if resolved.mask.is_none() {
+                        resolved.mask = Some(tile);
+                    }
+                }
+            }
+            cursor = *parent;
+        }
+        let aabb = resolved.aabb;
+        tests.retain(|test| !is_inert(test, aabb));
+        match tests.as_slice() {
+            [] => {}
+            [only] => resolved.rounded[0] = *only,
+            [inner, outer, rest @ ..] => {
+                // Outer first, as the two-link walk leaves them.
+                resolved.rounded = [*outer, *inner];
+                resolved.dropped = u8::try_from(rest.len()).unwrap_or(u8::MAX);
+                counter::add(Counter::ClipRoundedTestsDropped, rest.len() as u64);
+            }
+        }
+        resolved.rounded_count = tests.len().min(Self::MAX_INLINE_ROUNDED) as u32;
         resolved
     }
 
@@ -458,6 +499,73 @@ fn placed(
         bottom_left: scaled(radii.bottom_left),
     };
     (moved, moved_radii)
+}
+
+/// The shader's form of one rounded link.
+fn test_of(
+    rect: Rect<DevicePx, Device>,
+    radii: Corners<Vec2<DevicePx>>,
+    shape: f32,
+) -> RoundedTest {
+    RoundedTest {
+        rect: [
+            rect.origin.x.0,
+            rect.origin.y.0,
+            rect.size.width.0,
+            rect.size.height.0,
+        ],
+        radii: [
+            radii.top_left.x.0,
+            radii.top_left.y.0,
+            radii.top_right.x.0,
+            radii.top_right.y.0,
+            radii.bottom_right.x.0,
+            radii.bottom_right.y.0,
+            radii.bottom_left.x.0,
+            radii.bottom_left.y.0,
+        ],
+        shape,
+    }
+}
+
+/// Whether `test` changes no pixel inside `aabb`, which lies inside the test's rectangle.
+///
+/// The shader samples pixel centres, applies `aabb` as a hard edge and antialiases the test over
+/// one pixel. A straight side of the test is inert when it falls on a pixel boundary, or when
+/// `aabb` stays at least half a pixel inside it. A corner is inert when `aabb` misses its
+/// `rx × ry` box grown by one pixel for the antialiasing band.
+fn is_inert(test: &RoundedTest, aabb: [f32; 4]) -> bool {
+    let [x, y, width, height] = test.rect;
+    let (right, bottom) = (x + width, y + height);
+    let (inner_left, inner_top) = (aabb[0], aabb[1]);
+    let (inner_right, inner_bottom) = (aabb[0] + aabb[2], aabb[1] + aabb[3]);
+    if aabb[2] <= 0.0 || aabb[3] <= 0.0 {
+        return true;
+    }
+    let side = |edge: f32, inset: f32| edge == edge.round() || inset >= 0.5;
+    if !(side(x, inner_left - x)
+        && side(y, inner_top - y)
+        && side(right, right - inner_right)
+        && side(bottom, bottom - inner_bottom))
+    {
+        return false;
+    }
+    let r = test.radii;
+    // Each corner's box as `[left, top, right, bottom]`, with its two radii.
+    let corners = [
+        ([x, y, x + r[0], y + r[1]], r[0], r[1]),
+        ([right - r[2], y, right, y + r[3]], r[2], r[3]),
+        ([right - r[4], bottom - r[5], right, bottom], r[4], r[5]),
+        ([x, bottom - r[7], x + r[6], bottom], r[6], r[7]),
+    ];
+    corners.iter().all(|&([left, top, right, bottom], rx, ry)| {
+        rx <= 0.0
+            || ry <= 0.0
+            || inner_left >= right + 1.0
+            || inner_right <= left - 1.0
+            || inner_top >= bottom + 1.0
+            || inner_bottom <= top - 1.0
+    })
 }
 
 /// Narrows `aabb` to its intersection with `rect`, never past zero extent.
