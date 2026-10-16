@@ -60,7 +60,8 @@ style! { pub MenubarStyle =>
     }"
 
     // The menu that drops out of a title. Wider than one opened from a button, because what hangs
-    // off a menubar is a whole heading's worth of commands rather than a row's.
+    // off a menubar is a whole heading's worth of commands rather than a row's. It is never taller
+    // than the room left in the window, and scrolls past that.
     ".zui-menubar__content {
         display: flex;
         flex-direction: column;
@@ -71,7 +72,9 @@ style! { pub MenubarStyle =>
         background-color: var(--zui-color-popover);
         color: var(--zui-color-popover-foreground);
         box-shadow: var(--zui-shadow-md);
-        overflow: hidden;
+        max-height: var(--zui-popper-available-height, none);
+        overflow-x: hidden;
+        overflow-y: auto;
     }"
     // It always drops out of the bar, so it always comes in from above: eight pixels up, at
     // nineteen twentieths and transparent, settling over the same seventh of a second every other
