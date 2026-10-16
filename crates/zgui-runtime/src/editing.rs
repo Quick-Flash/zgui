@@ -514,7 +514,7 @@ impl Attached {
             }
         });
         Self {
-            projection: Projection::adopt(index, nodes),
+            projection: Projection::adopt(index, nodes, false),
             editor,
             uncommitted: false,
         }
