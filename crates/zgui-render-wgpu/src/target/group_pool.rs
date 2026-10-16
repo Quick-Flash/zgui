@@ -81,6 +81,8 @@ pub struct GroupPool {
     entries: Vec<Option<Entry>>,
     /// How many bytes of targets may be resident.
     budget: u64,
+    /// Whether the budget follows the region, see [`GroupPool::scaled`].
+    scaled: bool,
     /// How many leases were degraded to half resolution because the budget was reached.
     degraded: u32,
     /// The most targets lent at once since the pool was built.
@@ -98,11 +100,17 @@ impl GroupPool {
 
     /// How many bytes of isolated targets are resident before the pool starts reducing resolution.
     ///
-    /// Sized so that a 4K window has room for several full-resolution targets — deep nesting on a
-    /// large surface is where isolation is both most expensive and most likely — while a document
-    /// that isolates dozens of things at once is pushed to half resolution rather than allowed to
-    /// take the whole device's memory.
+    /// The smallest budget of a pool whose budget follows the surface ([`GroupPool::scaled`]). A
+    /// document that isolates dozens of things at once is pushed to half resolution rather than
+    /// allowed to take the whole device's memory.
     pub const BUDGET: u64 = 256 * 1024 * 1024;
+
+    /// How many full-resolution targets a budget that follows the region holds at least.
+    ///
+    /// A frosted card in a frosted panel in a group holds about this many at once: the group, the
+    /// card, a copy of what is beneath the card, and the copies and blur targets of a backdrop in
+    /// it. On a large surface [`GroupPool::BUDGET`] holds fewer, and the pool degrades.
+    pub const SURFACE_TARGETS: u64 = 6;
 
     /// The usage an isolated target needs: drawn into, sampled by the composite, copied into by a
     /// backdrop capture, and copied out by a test.
@@ -117,10 +125,30 @@ impl GroupPool {
             region: region.non_negative(),
             entries: Vec::new(),
             budget,
+            scaled: false,
             degraded: 0,
             peak: 0,
             leases: 0,
         }
+    }
+
+    /// An empty pool for targets covering `region`, whose budget follows the region.
+    ///
+    /// The budget is [`GroupPool::BUDGET`], or room for [`GroupPool::SURFACE_TARGETS`]
+    /// full-resolution targets where that is more. A resize computes it again.
+    pub fn scaled(region: Size<i32, Device>) -> Self {
+        let mut pool = Self::new(region, Self::budget_for(region));
+        pool.scaled = true;
+        pool
+    }
+
+    /// The budget of a pool whose budget follows `region`.
+    pub fn budget_for(region: Size<i32, Device>) -> u64 {
+        let full = allocated_for(region.non_negative(), TargetScale::Full);
+        let one = u64::from(Self::FORMAT.block_copy_size(None).unwrap_or(8))
+            * full.width.max(1) as u64
+            * full.height.max(1) as u64;
+        Self::BUDGET.max(Self::SURFACE_TARGETS * one)
     }
 
     /// Points the pool at a region of a different size, discarding every target it holds.
@@ -134,6 +162,9 @@ impl GroupPool {
             self.entries.clear();
         }
         self.region = region;
+        if self.scaled {
+            self.budget = Self::budget_for(region);
+        }
     }
 
     /// Lends a target at `scale`, reducing the resolution if the budget will not take another.
@@ -471,6 +502,26 @@ mod tests {
             allocated_for(Size::new(200, 200), TargetScale::Full),
             "both round to the same class, so nothing had to be thrown away"
         );
+    }
+
+    #[test]
+    fn a_scaled_budget_holds_six_full_targets_of_a_large_surface() {
+        let small = Size::new(1776, 1128);
+        assert_eq!(GroupPool::budget_for(small), GroupPool::BUDGET);
+        let large = Size::new(4608, 2534);
+        assert_eq!(
+            GroupPool::budget_for(large),
+            GroupPool::SURFACE_TARGETS * cost(large, TargetScale::Full)
+        );
+        assert!(GroupPool::budget_for(large) > GroupPool::BUDGET);
+
+        let mut pool = GroupPool::scaled(small);
+        assert_eq!(pool.budget(), GroupPool::BUDGET);
+        pool.resize(large);
+        assert_eq!(pool.budget(), GroupPool::budget_for(large));
+        let mut fixed = GroupPool::new(small, 1024);
+        fixed.resize(large);
+        assert_eq!(fixed.budget(), 1024, "a budget that was set stays set");
     }
 
     #[test]
