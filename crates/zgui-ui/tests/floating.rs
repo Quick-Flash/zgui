@@ -290,6 +290,41 @@ fn a_combobox_opens_when_its_field_is_asked_for_the_list_and_its_items_are_paint
     assert_painted(&stage, "United Kingdom");
 }
 
+#[test]
+fn picking_a_combobox_option_with_the_pointer_leaves_the_field_focused() {
+    let mut stage = staged!(|| AnyView::new(view! {
+        ThemeProvider {
+            column(class = "page") {
+                Combobox {
+                    ComboboxInput(placeholder = "Search countries", label = "Country")
+                    ComboboxContent {
+                        ComboboxItem(value = "gb") {"United Kingdom"}
+                        ComboboxItem(value = "ie") {"Ireland"}
+                    }
+                }
+            }
+        }
+    }));
+    stage.press_named(zgui::vocab::NamedKey::Tab);
+    let field = stage.focused().expect("tab reached the field");
+    stage.press_named(zgui::vocab::NamedKey::ArrowDown);
+    stage.wait(SETTLED);
+    assert_painted(&stage, "Ireland");
+
+    stage.click(aim(&stage, "Ireland"));
+    stage.wait(SETTLED);
+    assert_absent(&stage, "United Kingdom");
+    assert_eq!(
+        stage.focused(),
+        Some(field),
+        "the pick took focus off the field"
+    );
+
+    stage.press_named(zgui::vocab::NamedKey::ArrowDown);
+    stage.wait(SETTLED);
+    assert_painted(&stage, "United Kingdom");
+}
+
 // ---- the surface that opens on the other button -------------------------------------------------
 
 #[test]
@@ -704,6 +739,49 @@ fn a_command_list_paints_its_items_without_being_opened() {
         }
     }));
     assert_painted(&stage, "New invoice");
+}
+
+#[test]
+fn picking_a_command_with_the_pointer_leaves_the_field_focused() {
+    let ran = Rc::new(Cell::new(false));
+    let told = Rc::clone(&ran);
+    let mut stage = staged!(move || {
+        let told = Rc::clone(&told);
+        AnyView::new(view! {
+            ThemeProvider {
+                column(class = "page") {
+                    Command {
+                        CommandInput(placeholder = "Type a command…", label = "Command")
+                        CommandList {
+                            CommandItem(value = "invoice.new", text = "New invoice") {
+                                "New invoice"
+                            }
+                            CommandItem(
+                                value = "invoice.export",
+                                text = "Export invoices",
+                                on_select = zgui::reactive::UnsyncCallback::new(
+                                    move |()| told.set(true)
+                                )
+                            ) {
+                                "Export invoices"
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    });
+    stage.press_named(zgui::vocab::NamedKey::Tab);
+    let field = stage.focused().expect("tab reached the field");
+
+    stage.click(aim(&stage, "Export invoices"));
+    stage.wait(SETTLED);
+    assert!(ran.get(), "the press ran the command");
+    assert_eq!(
+        stage.focused(),
+        Some(field),
+        "the pick took focus off the field"
+    );
 }
 
 // ---- a caller's ref on the trigger -------------------------------------------------------------
