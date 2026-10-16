@@ -246,6 +246,7 @@ impl Window {
         // the frame never learns about, and every later colour change misses it.
         self.update_text_brushes();
         self.build_boxes();
+        self.owe_carried_scrolls_again();
         self.lay_out();
     }
 

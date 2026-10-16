@@ -385,6 +385,7 @@ impl Window {
         self.dispatch_scroll(timestamp);
         mark("f.observe");
         let observed = self.deliver_observations();
+        self.forget_carried_scrolls();
         // A second settle, for what the scroll and observation deliveries produced: both flush
         // and relayout mid-frame precisely so a virtualised list renders this frame's rows, and
         // rows born that way write their `src` after the first settle has run. Without this, each

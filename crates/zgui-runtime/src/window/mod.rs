@@ -318,6 +318,14 @@ pub struct Window {
         zgui_view::ScrollTarget,
         zgui_view::ScrollBehavior,
     )>,
+    /// The scrolls the last layout pass of this frame carried out that give the same result when
+    /// carried out again. A relayout after an observation delivery carries them out once more, so
+    /// they measure the geometry that relayout produces.
+    carried_scrolls: Vec<(
+        zgui_dom::NodeKey,
+        zgui_view::ScrollTarget,
+        zgui_view::ScrollBehavior,
+    )>,
     /// When the earliest contact still being held becomes a long press.
     ///
     /// Kept as a moment on the loop's own clock rather than derived when the park is computed,
@@ -729,6 +737,7 @@ impl Window {
             scroll_frozen: false,
             panning: Vec::new(),
             owed_scrolls: Vec::new(),
+            carried_scrolls: Vec::new(),
             long_press_due: None,
             editors: crate::editing::Editors::new(),
             carets: crate::caret::Carets::new(),

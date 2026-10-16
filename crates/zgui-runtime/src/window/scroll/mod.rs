@@ -236,6 +236,26 @@ impl Window {
         self.place(container, to, translate(behavior));
     }
 
+    /// Queues again the scrolls the last layout pass carried out, before a relayout in the same
+    /// frame.
+    ///
+    /// A surface that an observation delivery places and caps changes its geometry after the
+    /// first layout pass. A scroll into view measured against that first pass can then leave its
+    /// node outside the capped scrollport.
+    pub(crate) fn owe_carried_scrolls_again(&mut self) {
+        if self.carried_scrolls.is_empty() {
+            return;
+        }
+        let mut again = core::mem::take(&mut self.carried_scrolls);
+        again.append(&mut self.owed_scrolls);
+        self.owed_scrolls = again;
+    }
+
+    /// Forgets the scrolls carried out this frame, once no relayout of this frame can follow.
+    pub(crate) fn forget_carried_scrolls(&mut self) {
+        self.carried_scrolls.clear();
+    }
+
     /// Whether a scroll a view asked for still waits for a layout pass.
     pub(crate) fn owes_scrolls(&self) -> bool {
         !self.owed_scrolls.is_empty()
@@ -247,10 +267,15 @@ impl Window {
     /// the fragment pass, which composes what this moves. An instant scroll is therefore shown by
     /// this frame and asks for no other; a smooth one asks for the frames its motion takes.
     pub(crate) fn carry_out_owed_scrolls(&mut self) {
+        self.carried_scrolls.clear();
         if self.owed_scrolls.is_empty() {
             return;
         }
         for (node, target, behavior) in core::mem::take(&mut self.owed_scrolls) {
+            // A relative scroll moves again each time it is carried out.
+            if !matches!(target, zgui_view::ScrollTarget::By(_)) {
+                self.carried_scrolls.push((node, target, behavior));
+            }
             let Some((container, to)) = self.destination(node, target) else {
                 continue;
             };

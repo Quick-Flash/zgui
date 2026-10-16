@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use zgui_geom::{DevicePx, Point};
-use zgui_reactive::prelude::{Get, Track, Update};
+use zgui_reactive::prelude::{Get, GetUntracked, Set, Track, Update};
 use zgui_reactive::{RenderEffect, RwSignal};
 use zgui_view::{BuildCx, IntoView, NodeRef, ScrollBehavior, ScrollTarget, View, ViewHost};
 
@@ -177,4 +177,56 @@ fn a_freeze_in_the_same_flush_as_a_scroll_applies_first() {
     );
     harness.settle(8);
     assert_eq!(page_offset(&harness), 100.0);
+}
+
+/// A list with no height of its own until a class caps it.
+const CAPPED_CSS: &str = "
+root { display: block; width: 400px; height: 300px }
+.list { display: block; width: 400px; overflow-y: auto }
+.capped { height: 200px }
+.row { display: block; height: 20px }
+";
+
+#[test]
+fn a_scroll_into_view_measures_the_relayout_an_observation_asks_for() {
+    // As a popper does: the list opens uncapped, its measured size is delivered, and the reader
+    // caps it in the same frame. The scroll was asked for in the flush that mounted the list.
+    let mut harness = support::app_with_text(CAPPED_CSS, move |cx: &mut BuildCx<'_>| {
+        let list = NodeRef::new();
+        let target = NodeRef::new();
+        let capped = RwSignal::new_local(false);
+        let size = list.observe_border_size();
+        core::mem::forget(RenderEffect::new(move |_| {
+            if size.get().is_some_and(|size| size.height.0 > 200.0) && !capped.get_untracked() {
+                capped.set(true);
+            }
+        }));
+        core::mem::forget(RenderEffect::new(move |_| {
+            if target.get().is_some() {
+                target.scroll_to(ScrollTarget::IntoView, ScrollBehavior::Instant);
+            }
+        }));
+        let mut column = zgui_elements::column()
+            .class("list")
+            .class_toggle(zgui_view::ClassName::new("capped"), move || capped.get())
+            .node_ref(list);
+        for index in 0..40 {
+            let row = zgui_elements::column().class("row");
+            column = column.child(if index == 30 {
+                row.node_ref(target)
+            } else {
+                row
+            });
+        }
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(column)
+                .into_view()
+                .build(cx),
+        )
+    });
+    harness.settle(8);
+    // Row 30 spans 600px to 620px, so the 200px scrollport ends at its bottom edge.
+    assert_eq!(scrolled(&harness), 420.0);
 }
