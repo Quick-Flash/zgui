@@ -415,11 +415,23 @@ fn plan_backdrop(
     // beneath it, or it samples the previous frame's composite — which already contains this
     // filter's own output, and the panel smears a little further every frame. A filter with no
     // reach is exempt and safe: it reads only the pixel it writes, which the scissor already
-    // covers.
+    // covers. A group's target holds no earlier frame: its first pass clears all of it, so a read
+    // past the group's region reads transparent, which is what lies outside a backdrop root.
     debug_assert!(
-        backdrop.reads_only_what_it_writes() || scissor.contains_rect(source),
+        beneath != TargetRef::Composed
+            || backdrop.reads_only_what_it_writes()
+            || scissor.contains_rect(source),
         "a backdrop reads {source:?}, which the region {scissor:?} being written does not contain"
     );
+    // A group nothing has been drawn into yet was never cleared, and holds what its last lease left
+    // there. What is beneath the backdrop is then transparent, and so is any filter of it.
+    if let Some(slot) = beneath.slot() {
+        builder.end_pass();
+        if builder.is_unwritten(slot) {
+            builder.begin_pass(beneath, scissor);
+            return;
+        }
+    }
     let chain = Chain::of(&backdrop.filters);
     let Some((filtered, captured)) =
         crate::filter::backdrop::plan(builder, beneath, &chain, source)

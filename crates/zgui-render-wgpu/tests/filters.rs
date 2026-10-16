@@ -461,3 +461,82 @@ fn a_backdrop_in_a_half_resolution_group_frosts_what_is_beneath_it_in_place() {
     assert_eq!(frosted.rgba(16, 16), unfrosted.rgba(16, 16));
     assert_eq!(frosted.rgba(110, 110), unfrosted.rgba(110, 110));
 }
+
+/// A group marker over `bounds` that changes nothing about its content.
+fn identity_group(bounds: (f32, f32, f32, f32)) -> GroupBoundary {
+    GroupBoundary::start(
+        rect(bounds.0, bounds.1, bounds.2, bounds.3),
+        1.0,
+        zgui_scene::peniko::BlendMode::default(),
+        Default::default(),
+    )
+}
+
+#[test]
+fn a_backdrop_in_a_group_reads_transparent_past_the_group() {
+    // The group's first pass clears all of its target, so what the blur reads above the group is
+    // transparent and belongs to no earlier frame.
+    let Some(mut renderer) = plain_renderer() else {
+        return;
+    };
+    let mut scene = Scene::new();
+    scene.begin_frame(Size::new(SIDE, SIDE));
+    quad(&mut scene, (0.0, 0.0, SIDE as f32, SIDE as f32), [255; 3]);
+    let group = identity_group((32.0, 32.0, 64.0, 64.0));
+    scene.push_group(group.clone());
+    quad(&mut scene, (32.0, 32.0, 64.0, 64.0), [0, 0, 0]);
+    scene.push_backdrop(BackdropFilter::new(
+        rect(32.0, 32.0, 64.0, 16.0),
+        [Filter::Blur(4.0)].into_iter().collect(),
+    ));
+    scene.push_group(group.end());
+    scene.finish(&DamageSet::full());
+
+    let pixels = present(&mut renderer, &scene);
+    assert!(
+        pixels.rgba(64, 64)[0] < 8,
+        "below the backdrop the group is black"
+    );
+    assert_eq!(
+        pixels.rgba(16, 16),
+        [255, 255, 255, 255],
+        "outside it is white"
+    );
+    assert_eq!(renderer.groups().lent(), 0);
+}
+
+#[test]
+fn a_backdrop_first_in_a_group_frosts_nothing_the_last_lease_left() {
+    // The second group reuses the first group's target. Nothing is drawn into it before the
+    // backdrop, so it still holds the red the first group drew there.
+    let Some(mut renderer) = plain_renderer() else {
+        return;
+    };
+    let mut scene = Scene::new();
+    scene.begin_frame(Size::new(SIDE, SIDE));
+    quad(&mut scene, (0.0, 0.0, SIDE as f32, SIDE as f32), [255; 3]);
+    let first = identity_group((0.0, 0.0, 64.0, SIDE as f32));
+    scene.push_group(first.clone());
+    quad(&mut scene, (0.0, 0.0, 64.0, SIDE as f32), [255, 0, 0]);
+    scene.push_group(first.end());
+    let second = identity_group((64.0, 0.0, 64.0, SIDE as f32));
+    scene.push_group(second.clone());
+    scene.push_backdrop(BackdropFilter::new(
+        rect(64.0, 0.0, 64.0, SIDE as f32),
+        [Filter::Blur(4.0)].into_iter().collect(),
+    ));
+    quad(&mut scene, (100.0, 100.0, 8.0, 8.0), [0, 0, 0]);
+    scene.push_group(second.end());
+    scene.finish(&DamageSet::full());
+
+    let pixels = present(&mut renderer, &scene);
+    assert_eq!(
+        pixels.rgba(66, 64),
+        [255, 255, 255, 255],
+        "no red of the first group bleeds into the second"
+    );
+    assert!(
+        pixels.rgba(104, 104)[0] < 8,
+        "and the second group's own content is drawn"
+    );
+}
