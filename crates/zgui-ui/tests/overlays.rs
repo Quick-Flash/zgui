@@ -1460,6 +1460,96 @@ fn a_native_select_with_a_placeholder_shows_it_until_something_is_chosen() {
     );
 }
 
+/// A select whose third option starts chosen.
+#[component]
+fn AChosenSelect() -> impl IntoView {
+    view! {
+        Select(default_value = "c") {
+            SelectTrigger(label = "Letter") {SelectValue()}
+            SelectContent {
+                SelectItem(value = "a") {"A"}
+                SelectItem(value = "b") {"B"}
+                SelectItem(value = "c") {"C"}
+                SelectItem(value = "d") {"D"}
+            }
+        }
+    }
+}
+
+/// A native select whose third option starts chosen.
+#[component]
+fn AChosenNativeSelect() -> impl IntoView {
+    view! {
+        NativeSelect(default_value = "c", a11y:label = "Letter") {
+            NativeSelectOption(value = "a") {"A"}
+            NativeSelectOption(value = "b") {"B"}
+            NativeSelectOption(value = "c") {"C"}
+            NativeSelectOption(value = "d") {"D"}
+        }
+    }
+}
+
+/// Opens a chooser with `open` on its trigger, and asserts that the chosen option is the active
+/// one and that ↓ then moves to the option after it.
+fn opens_on_the_chosen_option<V: IntoView + 'static>(
+    view: fn() -> V,
+    trigger_class: &str,
+    option_class: &str,
+    open: fn(&Harness, NodeId),
+) {
+    let harness = Harness::open();
+    harness.mount(view);
+    let trigger = harness.find(trigger_class);
+    open(&harness, trigger);
+    settle(&harness);
+    let options = every(&harness, option_class);
+    assert_eq!(options.len(), 4, "the list opened");
+    harness.window.host.set_tree_order(options.clone());
+    assert_eq!(
+        harness.semantics(trigger).relations.active_descendant,
+        Some(related(options[2])),
+        "the list opened on the chosen option"
+    );
+
+    harness.press(trigger, NamedKey::ArrowDown);
+    assert_eq!(
+        harness.semantics(trigger).relations.active_descendant,
+        Some(related(options[3])),
+        "the down arrow moved on from the chosen option"
+    );
+}
+
+/// Opens a chooser by pressing ↓ on its trigger.
+fn arrow_down(harness: &Harness, trigger: NodeId) {
+    harness.press(trigger, NamedKey::ArrowDown);
+}
+
+#[test]
+fn a_select_opened_by_a_click_opens_on_its_chosen_option() {
+    let view = || view! { AChosenSelect() };
+    opens_on_the_chosen_option(view, "zui-select", "zui-select__item", Harness::click);
+}
+
+#[test]
+fn a_select_opened_by_the_arrow_key_opens_on_its_chosen_option() {
+    let view = || view! { AChosenSelect() };
+    opens_on_the_chosen_option(view, "zui-select", "zui-select__item", arrow_down);
+}
+
+#[test]
+fn a_native_select_opened_by_a_click_opens_on_its_chosen_option() {
+    let view = || view! { AChosenNativeSelect() };
+    let (trigger, option) = ("zui-native-select", "zui-native-select__option");
+    opens_on_the_chosen_option(view, trigger, option, Harness::click);
+}
+
+#[test]
+fn a_native_select_opened_by_the_arrow_key_opens_on_its_chosen_option() {
+    let view = || view! { AChosenNativeSelect() };
+    let (trigger, option) = ("zui-native-select", "zui-native-select__option");
+    opens_on_the_chosen_option(view, trigger, option, arrow_down);
+}
+
 #[test]
 fn a_select_jumps_to_the_ends_and_leaves_without_choosing_on_escape() {
     let (harness, value, trigger, options) = open_select();
