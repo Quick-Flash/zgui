@@ -132,7 +132,7 @@ pub use crate::sheet::{Stylesheet, install_stylesheet, remove_stylesheet};
 pub use crate::time::{
     FrameHandle, IntervalHandle, TimeoutHandle, Timers, request_frame, set_interval, set_timeout,
 };
-pub use crate::value::{IntoReactiveValue, ReactiveValue};
+pub use crate::value::{IntoOptionalProp, IntoReactiveValue, ReactiveValue};
 pub use crate::view::{
     Anchor, AnyView, Children, ChildrenFn, ComponentMeta, Either, IntoView, Scoped, View,
 };

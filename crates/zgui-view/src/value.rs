@@ -31,6 +31,10 @@ pub mod marker {
     pub struct RelatedChoice;
     /// A closure computing an `R` that converts into the value wanted.
     pub struct DerivedInto<R>(core::marker::PhantomData<R>);
+    /// A value given where an optional one was wanted.
+    pub struct Given;
+    /// An `Option` given where an optional value was wanted.
+    pub struct Maybe;
 }
 
 /// The values written where an optional `T` is wanted that stand for a present one.
@@ -163,6 +167,41 @@ pub trait IntoReactiveValue<T, M> {
 impl<T, U: Into<T>> IntoReactiveValue<T, marker::Constant> for U {
     fn into_reactive_value(self) -> ReactiveValue<T> {
         ReactiveValue::Constant(self.into())
+    }
+}
+
+/// Anything that can be written where an optional `T` is wanted.
+///
+/// Implemented for anything that converts into `T`, which is present, and for an `Option` of
+/// anything that converts into `T`, which can be absent. The second form lets a component that
+/// wraps another one pass on its own optional prop. `M` is the marker that tells the two apart and
+/// is always inferred.
+///
+/// ```
+/// use zgui_view::IntoOptionalProp;
+///
+/// fn label<M>(value: impl IntoOptionalProp<String, M>) -> Option<String> {
+///     value.into_optional_prop()
+/// }
+///
+/// assert_eq!(label("Name"), Some("Name".to_owned()));
+/// assert_eq!(label(Some("Name")), Some("Name".to_owned()));
+/// assert_eq!(label(None::<String>), None);
+/// ```
+pub trait IntoOptionalProp<T, M> {
+    /// Converts.
+    fn into_optional_prop(self) -> Option<T>;
+}
+
+impl<T, U: Into<T>> IntoOptionalProp<T, marker::Given> for U {
+    fn into_optional_prop(self) -> Option<T> {
+        Some(self.into())
+    }
+}
+
+impl<T, U: Into<T>> IntoOptionalProp<T, marker::Maybe> for Option<U> {
+    fn into_optional_prop(self) -> Option<T> {
+        self.map(Into::into)
     }
 }
 

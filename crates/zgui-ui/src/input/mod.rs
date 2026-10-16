@@ -93,6 +93,18 @@ const SHEET: &str = "zui-input";
 /// }
 /// ```
 ///
+/// A field that is always secure takes `secure = true`:
+///
+/// ```
+/// # use zgui::prelude::*;
+/// # use zgui::{component, view};
+/// # use zgui_ui::prelude::*;
+/// # #[component]
+/// # fn Example() -> impl IntoView {
+/// view! { Input(secure = true, label = "Password") }
+/// # }
+/// ```
+///
 /// Leave `secure` out for a field that is never secure, which then costs nothing extra. A field
 /// given `secure` is built empty and loads its value through the editing model, so the view never
 /// holds the value as text.
@@ -136,8 +148,8 @@ pub fn Input(
     node_ref: Option<NodeRef>,
     /// Whether the value is a secret, such as a password. See [Secure](#secure).
     ///
-    /// Takes a signal, or the `Option` a wrapping component holds.
-    #[prop(optional)]
+    /// Takes a `bool`, a signal, or the `Option` a wrapping component holds.
+    #[prop(into, optional)]
     secure: Option<Signal<bool, LocalStorage>>,
     /// Classes merged after the field's own.
     #[prop(into, optional)]
