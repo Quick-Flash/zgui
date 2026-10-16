@@ -3,6 +3,7 @@
 //! | Module | Contents |
 //! |---|---|
 //! | `animation` | the second descent an animation that cannot repaint is serviced by |
+//! | `negation` | a complex selector inside `:not()` as its ancestor and attribute move |
 //! | `moved` | an element that moved between its animation mark and the restyle |
 //! | `scope` | the marks a restyle never turns into engine work |
 //! | `settling` | where a transition leaves the element's own style once it has finished |
@@ -22,6 +23,8 @@ mod damage;
 mod fill;
 #[path = "restyle/moved.rs"]
 mod moved;
+#[path = "restyle/negation.rs"]
+mod negation;
 #[path = "restyle/pass.rs"]
 mod pass;
 #[path = "restyle/scope.rs"]
