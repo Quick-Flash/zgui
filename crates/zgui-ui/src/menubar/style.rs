@@ -117,7 +117,18 @@ style! { pub MenubarStyle =>
         color: var(--zui-color-accent-foreground);
     }"
     ".zui-menubar__item:disabled { opacity: 0.5; pointer-events: none; }"
-    ".zui-menubar__item-label { flex: 1 1 auto; }"
+    ".zui-menubar__item-label {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: row;
+        align-items: center;
+        gap: var(--zui-space-sm);
+        min-width: 0;
+    }"
+    // Icons are muted at rest and take the row's colour under the highlight, as in a menu.
+    ".zui-menubar__item-label .zui-icon { color: var(--zui-color-muted-foreground); }"
+    ".zui-menubar__item:hover .zui-menubar__item-label .zui-icon,
+     .zui-menubar__item:focus .zui-menubar__item-label .zui-icon { color: inherit; }"
     // A tick or a bullet is placed in the gutter the row's own left padding opens for it, so every
     // label on the menu starts in the same column whether its row carries a mark or not.
     ".zui-menubar__item--check {
