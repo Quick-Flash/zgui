@@ -63,7 +63,12 @@ style! { pub ChartStyle =>
     ":scope .zui-chart__label {
         position: absolute;
         color: var(--zui-color-muted-foreground);
+        white-space: nowrap;
     }"
+    // A value label ends at its `right` and is centred on its grid line. A category label is
+    // centred on its band.
+    ":scope .zui-chart__label[data-axis=\"value\"] { transform: translateY(-50%); }"
+    ":scope .zui-chart__label[data-axis=\"category\"] { transform: translateX(-50%); }"
 
     // ---- the key -------------------------------------------------------------------------------
     // Unscoped, as the readout is, so a key drawn outside a chart looks the same as one inside.

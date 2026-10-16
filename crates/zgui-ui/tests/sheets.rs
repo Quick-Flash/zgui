@@ -8,6 +8,7 @@ mod desktop;
 use zgui::geom::{Device, DevicePx, Rect};
 use zgui::view;
 use zgui::view::NodeRef;
+use zgui_ui::chart::{LegendEntry, Plot, tick_label, value_gutter};
 use zgui_ui::prelude::*;
 use zgui_ui_icons::prelude::*;
 use zgui_ui_icons::set::status::CHECK_CIRCLE;
@@ -273,5 +274,118 @@ fn a_leading_icon_before_a_bare_label_keeps_the_full_gap() {
     assert!(
         (after - 36.0).abs() <= SLACK,
         "a label before a trailing mark ends {after}px from the button's end"
+    );
+}
+
+fn revenue() -> Vec<Series> {
+    vec![Series::new(
+        "Revenue",
+        vec![Datum::new("Jan", 42_100.0), Datum::new("Feb", 77_800.0), Datum::new("Mar", 51_000.0)],
+    )]
+}
+
+#[test]
+fn value_labels_sit_on_their_grid_lines_inside_the_gutter_under_large_type() {
+    let chart = NodeRef::new();
+    let mut stage = Stage::open(SHEET, move || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                box(
+                    class = "page",
+                    var:--zui-type-size-xs = "15px",
+                    var:--zui-type-leading-xs = "22px"
+                ) {
+                    Chart(series = revenue(), kind = ChartKind::Line, legend = false, node_ref = chart)
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let origin = own_box(&stage, chart);
+    let plot = Plot::new(480.0, 240.0);
+    let scale = plot.value_scale(revenue().iter().flat_map(Series::values));
+    let ticks = scale.ticks(5);
+    let x0 = origin.origin.x.0 + value_gutter(&ticks) as f32;
+    for tick in ticks.iter().filter(|tick| **tick > 0.0) {
+        let label = text_box(&stage, &tick_label(*tick));
+        let line = origin.origin.y.0 + scale.at(*tick) as f32;
+        let centre = label.origin.y.0 + label.size.height.0 / 2.0;
+        assert!(
+            (centre - line).abs() <= SLACK,
+            "the label {tick} is centred at {centre} and its grid line is at {line}"
+        );
+        assert!(
+            right(label) <= x0 - 4.0,
+            "the label {tick} ends at {} and the axis is at {x0}",
+            right(label)
+        );
+        assert!(
+            label.origin.x.0 >= origin.origin.x.0 - SLACK,
+            "the label {tick} starts left of the chart"
+        );
+    }
+}
+
+#[test]
+fn each_category_is_labelled_under_the_middle_of_its_band() {
+    let chart = NodeRef::new();
+    let mut stage = Stage::open(SHEET, move || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                box(class = "page") {
+                    Chart(series = revenue(), legend = false, node_ref = chart)
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let origin = own_box(&stage, chart);
+    let ticks = Plot::new(480.0, 240.0)
+        .value_scale(revenue().iter().flat_map(Series::values))
+        .ticks(5);
+    let plot = Plot::new(480.0, 240.0).with_left(value_gutter(&ticks));
+    for (position, name) in ["Jan", "Feb", "Mar"].into_iter().enumerate() {
+        let label = text_box(&stage, name);
+        let (start, band) = plot.band(position, 3);
+        let middle = origin.origin.x.0 + (start + band / 2.0) as f32;
+        let centre = label.origin.x.0 + label.size.width.0 / 2.0;
+        assert!(
+            (centre - middle).abs() <= SLACK,
+            "{name} is centred at {centre} and its band at {middle}"
+        );
+        assert!(
+            label.origin.y.0 >= origin.origin.y.0 + plot.y1() as f32,
+            "{name} is not under the plot"
+        );
+    }
+}
+
+#[test]
+fn a_key_drawn_outside_a_chart_spaces_its_entries() {
+    let mut stage = Stage::open(SHEET, move || {
+        view! {
+            ThemeProvider(scheme = ColorScheme::Light) {
+                box(class = "page") {
+                    ChartContainer {
+                        ChartLegendContent(entries = vec![
+                            LegendEntry::new("Reads", "var(--zui-color-chart-1)"),
+                            LegendEntry::new("Writes", "var(--zui-color-chart-4)"),
+                        ])
+                    }
+                }
+            }
+        }
+    });
+    stage.settle();
+
+    let reads = text_box(&stage, "Reads");
+    let writes = text_box(&stage, "Writes");
+    // A swatch and the gaps on either side of it are between the two names.
+    let between = writes.origin.x.0 - right(reads);
+    assert!(
+        between >= 8.0 + 16.0,
+        "the two names are {between}px apart, so the key has no swatches or gaps"
     );
 }
