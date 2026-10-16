@@ -20,6 +20,7 @@
 //! | [`floats`] | how wide each line is allowed to be |
 //! | [`baseline`] | which line a parent aligns the whole context by |
 //! | [`resolved`] | what the context came out at, for everything that reads layout afterwards |
+//! | [`slices`] | where each nested inline box lands on each line, for painting |
 //! | [`atomic`] | the nested layout an `inline-block` costs, and the memo without which it is ruinous |
 //!
 //! Flattening the tree into the string a shaper takes, sizing what is on the line that is not a
@@ -37,6 +38,7 @@ pub mod leaf_shell;
 pub mod lines;
 pub(crate) mod measure;
 pub mod resolved;
+pub mod slices;
 pub mod strut;
 pub mod vertical_align;
 

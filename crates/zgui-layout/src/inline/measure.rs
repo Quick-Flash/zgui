@@ -374,6 +374,18 @@ pub(crate) fn compute<C: MeasureContent>(
         ),
         _ => Default::default(),
     };
+    // Only the kept pass, and only when a nested inline box is on the lines: everything else holds
+    // an empty list, which allocates nothing.
+    let slices = if ask.final_pass
+        && generated
+            .items
+            .iter()
+            .any(|item| matches!(item.role, Role::StartEdge(_)))
+    {
+        crate::inline::slices::compute(tree, &generated, &boxes, &computed, &broken, basis)
+    } else {
+        Vec::new()
+    };
     let paragraph = tree.intern_paragraph(summary.key);
     let resolution = InlineResolution {
         paragraph,
@@ -384,6 +396,7 @@ pub(crate) fn compute<C: MeasureContent>(
         map: generated.map.clone(),
         sources: generated.sources.clone(),
         ellipsis,
+        slices,
     };
     let measured = Measured {
         size: Size {

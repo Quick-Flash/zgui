@@ -490,3 +490,121 @@ fn vertical_align_on_a_run_of_text_moves_nothing_yet() {
         "an atomic inline is raised",
     );
 }
+
+/// The paragraph `aa ` followed by a span holding `bbbb cccc`, under `span` declarations.
+fn spanned(span: &str, para: &str) -> (LayoutStore, InlineResolution) {
+    resolve(
+        Element::new("root").children(vec![
+            Element::new("para")
+                .text("aa ")
+                .children(vec![Element::new("span").text("bbbb cccc")]),
+        ]),
+        &format!(
+            "root {{ display: block; width: 400px }}
+             para {{ display: block; {para} }}
+             span {{ display: inline; {span} }}"
+        ),
+        400.0,
+    )
+}
+
+#[test]
+fn a_nested_inline_box_has_one_slice_per_line_it_crosses() {
+    // Ten characters fit a line. The span's start edge is margin 3, border 1 and padding 2, six in
+    // all, so the first line ends after `aa bbbb` and the second holds ` cccc`.
+    let (_, resolution) = spanned(
+        "margin: 0 3px; border: 1px solid black; padding: 0 2px",
+        "width: 80px",
+    );
+    assert_eq!(resolution.lines.len(), 2);
+    let slices = &resolution.slices;
+    assert_eq!(slices.len(), 2, "{slices:#?}");
+
+    let first = &slices[0];
+    assert_eq!((first.line, first.first, first.last), (0, true, false));
+    // After `aa `, plus the start margin.
+    close(
+        first.x,
+        3.0 * ADVANCE + 3.0,
+        "the first part starts inside the margin",
+    );
+    close(
+        first.x + first.width,
+        resolution.lines[0].offset + resolution.lines[0].width,
+        "a part the box is broken after runs to the line's end",
+    );
+    assert_eq!(first.border.left, 1.0);
+    assert_eq!(first.border.right, 0.0, "the broken side has no border");
+    assert_eq!(first.padding.right, 0.0);
+
+    let second = &slices[1];
+    assert_eq!((second.line, second.first, second.last), (1, false, true));
+    close(
+        second.x,
+        resolution.lines[1].offset,
+        "a continued part starts at the line's start",
+    );
+    // ` cccc` is five characters, then the end border and padding.
+    close(
+        second.x + second.width,
+        5.0 * ADVANCE + 3.0,
+        "the last part ends at its border edge",
+    );
+    assert_eq!(second.border.left, 0.0);
+    assert_eq!(second.border.right, 1.0);
+    assert_eq!(first.text, 3..12, "both parts name the box's whole text");
+    assert_eq!(resolution.slices_on(1).len(), 1);
+}
+
+#[test]
+fn a_slice_is_as_tall_as_the_boxes_own_content_area_and_padding() {
+    let (_, resolution) = spanned("padding: 4px 0; border: 1px solid black", "");
+    let slice = &resolution.slices[0];
+    let line = &resolution.lines[0];
+    close(
+        slice.height,
+        ASCENT + DESCENT + 2.0 * 4.0 + 2.0,
+        "the content area, the padding and the border",
+    );
+    close(
+        slice.y,
+        line.baseline() - ASCENT - 4.0 - 1.0,
+        "the content area sits on the baseline",
+    );
+    assert_eq!(slice.baseline, line.baseline());
+    assert_eq!(slice.ascent, ASCENT);
+    assert_eq!(slice.descent, DESCENT);
+    assert_eq!(
+        line.height(),
+        LINE,
+        "the padding does not change the line box"
+    );
+}
+
+#[test]
+fn a_paragraph_without_nested_boxes_holds_no_slices() {
+    let (_, resolution) = resolve(
+        Element::new("root").children(vec![Element::new("para").text("alpha bravo")]),
+        "root { display: block; width: 400px }
+         para { display: block }",
+        400.0,
+    );
+    assert!(resolution.slices.is_empty());
+    assert_eq!(resolution.slices.capacity(), 0, "nothing was allocated");
+}
+
+#[test]
+fn a_slice_stops_where_an_ellipsis_cuts_the_line() {
+    let (_, resolution) = spanned(
+        "background: red",
+        "width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis",
+    );
+    let cut = resolution.lines[0].ellipsis.expect("the line was cut");
+    let slice = &resolution.slices[0];
+    close(slice.x, 3.0 * ADVANCE, "the part starts after `aa `");
+    close(
+        slice.x + slice.width,
+        cut.cutoff,
+        "the part ends at the cut",
+    );
+}
