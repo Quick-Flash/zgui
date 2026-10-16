@@ -25,6 +25,7 @@ impl PaintTable {
             Some(Paint::Solid(_)) => PaintKind::Solid,
             Some(Paint::Gradient { .. }) => PaintKind::Gradient,
             Some(Paint::Image { .. }) => PaintKind::Image,
+            Some(Paint::Sides(_)) => PaintKind::Sides,
             None => return PaintRef::NONE,
         };
         PaintRef::new(kind, id)

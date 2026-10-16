@@ -161,7 +161,12 @@ fn fs_quad(in: QuadVarying) -> @location(0) vec4<f32> {
 
     var color = background;
     if border_sdf < antialias_threshold {
-        var border_color = paint_color(quad.stroke, point, paint_origin);
+        var border_color: vec4<f32>;
+        if quad.stroke.kind == PAINT_SIDES {
+            border_color = sides_color(quad.stroke, center_to_point, corner_to_point, border, unit);
+        } else {
+            border_color = paint_color(quad.stroke, point, paint_origin);
+        }
         let style = quad.style & 0xffu;
         if style != BORDER_SOLID {
             border_color *= dash_coverage(
@@ -181,6 +186,33 @@ fn fs_quad(in: QuadVarying) -> @location(0) vec4<f32> {
     }
 
     return color * saturate((antialias_threshold - outer_sdf) / unit) * clip;
+}
+
+// The colour of a border with one colour per side, at a point in the border.
+//
+// The sides meet on the line from the outer corner to the inner corner, as CSS draws them. A point
+// belongs to the vertical side when `dx * bw_y < dy * bw_x`, where `dx` and `dy` are its distances
+// in from the vertical and the horizontal edge and `bw` the two widths. A zero-width side never
+// wins. The two colours are blended over one pixel across the diagonal.
+fn sides_color(
+    reference: PaintRef,
+    center_to_point: vec2<f32>,
+    corner_to_point: vec2<f32>,
+    widths: vec2<f32>,
+    unit: f32,
+) -> vec4<f32> {
+    let paint = paints[reference.index];
+    let vertical = side_color(paint, select(1u, 3u, center_to_point.x < 0.0));
+    let horizontal = side_color(paint, select(2u, 0u, center_to_point.y < 0.0));
+    var toward_vertical = 0.0;
+    if widths.x > 0.0 && widths.y > 0.0 {
+        let inward = -corner_to_point;
+        let across = (inward.y * widths.x - inward.x * widths.y) / length(widths);
+        toward_vertical = saturate(0.5 + across / unit);
+    } else if widths.x > 0.0 {
+        toward_vertical = 1.0;
+    }
+    return mix(horizontal, vertical, toward_vertical);
 }
 
 // Premultiplied source-over.

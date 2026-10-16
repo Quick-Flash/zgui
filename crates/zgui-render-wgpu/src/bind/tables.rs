@@ -114,6 +114,8 @@ pub mod kind {
     pub const GRADIENT: u32 = 2;
     /// A sampled image.
     pub const IMAGE: u32 = 3;
+    /// One colour per border side, held as four stops.
+    pub const SIDES: u32 = 4;
 }
 
 /// The interpolation spaces the shader can convert back from, and what it calls each.
@@ -700,6 +702,20 @@ fn push_paint(tables: &mut Tables, paint: Option<&Paint>) {
             kind: kind::IMAGE,
             ..GpuPaint::default()
         },
+        Paint::Sides(colors) => {
+            let start = tables.stops.len() as u32;
+            tables.stops.extend(colors.iter().map(|color| GpuStop {
+                color: color.to_premultiplied_srgb(),
+                offset: 0.0,
+                pad: [0.0; 3],
+            }));
+            GpuPaint {
+                kind: kind::SIDES,
+                stop_start: start,
+                stop_count: 4,
+                ..GpuPaint::default()
+            }
+        }
     };
     tables.paints.push(gpu);
 }

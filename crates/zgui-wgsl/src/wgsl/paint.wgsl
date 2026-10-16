@@ -85,6 +85,12 @@ fn gradient_extent(paint: Paint, raw: f32) -> f32 {
     return saturate(raw);
 }
 
+// The colour of border side `side` (top, right, bottom, left) of a sides paint, as premultiplied
+// gamma-encoded sRGB.
+fn side_color(paint: Paint, side: u32) -> vec4<f32> {
+    return vector4_of(stops[paint.stop_start + side].color);
+}
+
 // The colour of a ramp at `t`, as premultiplied gamma-encoded sRGB.
 fn sample_ramp(paint: Paint, t: f32) -> vec4<f32> {
     let count = paint.stop_count;
@@ -163,6 +169,10 @@ fn paint_color(reference: PaintRef, point: vec2<f32>, origin: vec2<f32>) -> vec4
     let anchored = point - origin;
     if reference.kind == PAINT_GRADIENT {
         return sample_ramp(paint, gradient_extent(paint, gradient_position(paint, anchored)));
+    }
+    if reference.kind == PAINT_SIDES {
+        // Read here without a side, which only a pipeline that cannot pick one does: the top.
+        return side_color(paint, 0u);
     }
     // A sampled paint reaches the surface as a colour sprite rather than as a fill, so nothing
     // produces one here.
