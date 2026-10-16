@@ -29,6 +29,12 @@ const EDITABLE: [&str; 2] = ["editor", "field"];
 /// key would take a line break nothing displays and leave the form unsendable from the keyboard.
 const TAKES_LINE_BREAKS: &str = "editor";
 
+/// The one editable element whose value can be a secret.
+const TAKES_SECRETS: &str = "field";
+
+/// The attribute that makes a field's value a secret.
+pub(crate) const SECURE: &str = "secure";
+
 /// One element's editing model, and the text nodes it writes through.
 struct Attached {
     /// The model.
@@ -167,6 +173,91 @@ impl Editors {
                 | zgui_edit::Command::SelectAll
                 | zgui_edit::Command::Copy
         )
+    }
+
+    /// Whether an element is a field that declares its value a secret.
+    pub fn is_secure_element(document: &Document, node: NodeKey) -> bool {
+        let Some(index) = document.store().index_of(node) else {
+            return false;
+        };
+        let record = document.store().core(index);
+        record.kind() == NodeKind::Element
+            && record.local_name().as_str() == TAKES_SECRETS
+            && zgui_dom::Node::new(record).attr(SECURE).is_some()
+    }
+
+    /// Whether an element's model shows its value masked.
+    pub fn is_secure(&self, node: NodeKey) -> bool {
+        self.attached
+            .get(&node)
+            .is_some_and(|held| held.projection.is_masked())
+    }
+
+    /// Masks or unmasks an element's value, and answers whether the shown text changed.
+    ///
+    /// The caret, the selection, the history and a composition stay as they are. A secure
+    /// element with no model gets one now, so that the text a view wrote under it is masked
+    /// before the frame styles it. A plain element with no model stays without one.
+    pub fn set_secure(&mut self, document: &Document, node: NodeKey, on: bool) -> bool {
+        if !Self::holds_text(document, node) {
+            return false;
+        }
+        let Some(index) = document.store().index_of(node) else {
+            return false;
+        };
+        let Some(attached) = self.attached.get_mut(&node) else {
+            if !on {
+                return false;
+            }
+            let attached = Attached::adopt(document, index);
+            let masked = attached.projection.is_masked();
+            self.attached.insert(node, attached);
+            return masked;
+        };
+        attached.editor.set_secure(on);
+        let projection = &mut attached.projection;
+        let buffer = attached.editor.buffer();
+        document
+            .edit(&EverythingMatters, |edit| {
+                projection.set_masked(edit, buffer, on)
+            })
+            .unwrap_or(false)
+    }
+
+    /// The selection of an element's model, in offsets into the text the document holds.
+    ///
+    /// The model's own selection for a plain element. For a masked one, each end is moved to its
+    /// place in the bullets.
+    pub fn shown_selection(&self, node: NodeKey) -> Option<zgui_edit::Selection> {
+        let held = self.attached.get(&node)?;
+        let selection = held.editor.selection();
+        if !held.projection.is_masked() {
+            return Some(selection);
+        }
+        let buffer = held.editor.buffer();
+        Some(zgui_edit::Selection {
+            anchor: held.projection.to_shown(buffer, selection.anchor),
+            focus: held.projection.to_shown(buffer, selection.focus),
+            affinity: selection.affinity,
+        })
+    }
+
+    /// The model offset an offset into the text the document holds names.
+    ///
+    /// The same offset for a plain element or one with no model.
+    pub fn to_model(&self, node: NodeKey, shown: usize) -> usize {
+        self.attached.get(&node).map_or(shown, |held| {
+            held.projection.to_model(held.editor.buffer(), shown)
+        })
+    }
+
+    /// The offset into the text the document holds a model offset names.
+    ///
+    /// The same offset for a plain element or one with no model.
+    pub fn to_shown(&self, node: NodeKey, offset: usize) -> usize {
+        self.attached.get(&node).map_or(offset, |held| {
+            held.projection.to_shown(held.editor.buffer(), offset)
+        })
     }
 
     /// Whether an element is one whose text this vocabulary keeps an editing model for.
@@ -473,7 +564,11 @@ impl Attached {
     /// and a projection that stayed short would drop every write into it. That is a blank field,
     /// which is the ordinary state of every field on a form the first time it is shown, and it
     /// types nothing at all.
+    ///
+    /// A secure field is masked here, in the same batch: the real text a view wrote under it is
+    /// replaced with bullets before anything styles or shapes it.
     fn adopt(document: &Document, index: NodeIndex) -> Self {
+        let secure = Editors::is_secure_element(document, document.store().key_of(index));
         let store = document.store();
         let mut nodes = Vec::new();
         let mut texts: Vec<String> = Vec::new();
@@ -488,7 +583,8 @@ impl Attached {
             }
             child = store.core(node).next_sibling();
         }
-        let editor = Editor::new(&held);
+        let mut editor = Editor::new(&held);
+        editor.set_secure(secure);
         let wanted = editor.paragraphs().len();
         let _ = document.edit(&EverythingMatters, |edit| {
             for node in nodes.drain(wanted.min(nodes.len())..) {
@@ -500,9 +596,9 @@ impl Attached {
                 nodes.push(node);
                 texts.push(String::new());
             }
+            let projection = Projection::adopt(index, Vec::new(), secure);
             for (paragraph, node) in nodes.iter().enumerate() {
-                let Some(content) = zgui_edit::document::content_of(editor.buffer(), paragraph)
-                else {
+                let Some(content) = projection.content(editor.buffer(), paragraph) else {
                     continue;
                 };
                 // Written only when it differs: an element already in this shape is the ordinary
@@ -514,7 +610,7 @@ impl Attached {
             }
         });
         Self {
-            projection: Projection::adopt(index, nodes, false),
+            projection: Projection::adopt(index, nodes, secure),
             editor,
             uncommitted: false,
         }
@@ -1011,6 +1107,162 @@ mod tests {
             !editors
                 .key(&document, key, &escape, Modifiers::NONE)
                 .handled
+        );
+    }
+
+    /// Makes a field's value a secret, as the attribute `secure` does.
+    fn make_secure(document: &Document, field: NodeIndex, on: bool) {
+        document
+            .edit(&EverythingMatters, |edit| {
+                edit.set_attribute(
+                    field,
+                    zgui_interned::AttrName::new(super::SECURE),
+                    on.then(|| "".into()),
+                );
+            })
+            .expect("not poisoned");
+    }
+
+    /// The text of every node under an element, joined.
+    fn shown(document: &Document, field: NodeIndex) -> String {
+        let mut out = String::new();
+        let mut child = document.store().core(field).first_child();
+        while let Some(node) = child {
+            out.push_str(&text_of(document, node));
+            child = document.store().core(node).next_sibling();
+        }
+        out
+    }
+
+    #[test]
+    fn typing_into_a_secure_field_writes_bullets_and_reports_the_real_value() {
+        let (document, field) = field("field", &[]);
+        make_secure(&document, field, true);
+        let key = document.store().key_of(field);
+        let mut editors = Editors::new();
+        let mut last = None;
+        for letter_typed in ["p", "w", "d"] {
+            last = editors
+                .key(&document, key, &letter(letter_typed), Modifiers::NONE)
+                .value;
+        }
+        assert_eq!(
+            last.as_deref(),
+            Some("pwd"),
+            "the owner hears the real value"
+        );
+        assert_eq!(shown(&document, field), "\u{2022}\u{2022}\u{2022}");
+        assert!(editors.is_secure(key));
+        assert_eq!(
+            editors.shown_selection(key).map(|held| held.range()),
+            Some(9..9),
+            "the caret is after the third bullet in the document"
+        );
+        assert_eq!(editors.selection(key).map(|held| held.range()), Some(3..3));
+    }
+
+    #[test]
+    fn adopting_a_secure_field_masks_the_text_a_view_wrote() {
+        let (document, field) = field("field", &["secret"]);
+        make_secure(&document, field, true);
+        let key = document.store().key_of(field);
+        let mut editors = Editors::new();
+        assert!(editors.set_secure(&document, key, true));
+        assert_eq!(shown(&document, field), "\u{2022}".repeat(6));
+        assert_eq!(editors.value(key).as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn a_plain_field_gets_no_model_from_being_told_it_is_plain() {
+        let (document, field) = field("field", &["ab"]);
+        let key = document.store().key_of(field);
+        let mut editors = Editors::new();
+        assert!(!editors.set_secure(&document, key, false));
+        assert!(editors.is_empty());
+        assert!(!Editors::is_secure_element(&document, key));
+    }
+
+    #[test]
+    fn an_editor_is_never_secure() {
+        let (document, element) = field("editor", &["ab"]);
+        make_secure(&document, element, true);
+        let key = document.store().key_of(element);
+        assert!(!Editors::is_secure_element(&document, key));
+        let mut editors = Editors::new();
+        editors.key(&document, key, &letter("z"), Modifiers::NONE);
+        assert_eq!(shown(&document, element), "zab");
+    }
+
+    #[test]
+    fn unmasking_and_masking_again_keeps_the_caret_and_the_undo_stack() {
+        let (document, field) = field("field", &[]);
+        make_secure(&document, field, true);
+        let key = document.store().key_of(field);
+        let mut editors = Editors::new();
+        editors.key(&document, key, &letter("a"), Modifiers::NONE);
+        editors.key(&document, key, &letter("b"), Modifiers::NONE);
+        let caret = editors.selection(key);
+
+        make_secure(&document, field, false);
+        assert!(editors.set_secure(&document, key, false));
+        assert_eq!(shown(&document, field), "ab");
+        assert_eq!(editors.selection(key), caret);
+        assert_eq!(editors.shown_selection(key), caret);
+
+        make_secure(&document, field, true);
+        assert!(editors.set_secure(&document, key, true));
+        assert!(!editors.set_secure(&document, key, true), "already masked");
+        assert_eq!(shown(&document, field), "\u{2022}\u{2022}");
+
+        let undone = editors.key(&document, key, &letter("z"), Modifiers::PRIMARY);
+        assert_eq!(
+            undone.value.as_deref(),
+            Some(""),
+            "the typing is still undoable"
+        );
+    }
+
+    #[test]
+    fn the_copy_and_cut_chords_put_nothing_on_the_clipboard() {
+        for read_only in [false, true] {
+            let (document, field) = field("field", &["secret"]);
+            make_secure(&document, field, true);
+            if read_only {
+                document
+                    .edit(&EverythingMatters, |edit| {
+                        edit.set_state(field, zgui_vocab::UiState::READ_ONLY, true);
+                    })
+                    .expect("not poisoned");
+            }
+            let key = document.store().key_of(field);
+            let mut editors = Editors::new();
+            editors.key(&document, key, &letter("a"), Modifiers::PRIMARY);
+            let copied = editors.key(&document, key, &letter("c"), Modifiers::PRIMARY);
+            assert_eq!(copied.clipboard, None, "read-only: {read_only}");
+            let cut = editors.key(&document, key, &letter("x"), Modifiers::PRIMARY);
+            assert_eq!(cut.clipboard, None, "read-only: {read_only}");
+            assert_eq!(cut.value, None, "a cut deleted the secret");
+            assert_eq!(editors.value(key).as_deref(), Some("secret"));
+        }
+    }
+
+    #[test]
+    fn an_emoji_secret_maps_between_model_and_document_offsets() {
+        let family = "\u{1f469}\u{200d}\u{1f4bb}";
+        let value = format!("a{family}");
+        let (document, field) = field("field", &[value.as_str()]);
+        make_secure(&document, field, true);
+        let key = document.store().key_of(field);
+        let mut editors = Editors::new();
+        editors.set_secure(&document, key, true);
+        assert_eq!(shown(&document, field), "\u{2022}\u{2022}");
+        assert_eq!(editors.to_model(key, 6), value.len());
+        assert_eq!(editors.to_model(key, 3), 1);
+        assert_eq!(editors.to_shown(key, value.len()), 6);
+        editors.select(&document, key, value.len()..value.len());
+        assert_eq!(
+            editors.shown_selection(key).map(|held| held.range()),
+            Some(6..6)
         );
     }
 }

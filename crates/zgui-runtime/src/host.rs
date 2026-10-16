@@ -732,9 +732,11 @@ impl ViewHost for RuntimeHost {
         };
         let length = self.text_length(key);
         self.selections.set(key, 0..length, length);
+        // To the end of the model's text, which the model finds when the command lands: the
+        // document's length counts the bullets of a secure field.
         self.issue(Command::Select {
             node,
-            range: 0..length,
+            range: 0..usize::MAX,
         });
     }
 

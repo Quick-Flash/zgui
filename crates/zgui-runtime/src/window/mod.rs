@@ -24,6 +24,7 @@ pub mod resize;
 pub mod scale;
 pub mod scheme;
 pub mod scroll;
+mod secure;
 mod select;
 mod sheets;
 mod surface_focus;
@@ -362,6 +363,8 @@ pub struct Window {
     /// inside a frame, the clipboard is readable only from the loop that owns the platform, and
     /// so the request is recorded here and answered by whoever has one.
     wants_paste: Vec<zgui_dom::NodeKey>,
+    /// Fields whose `secure` attribute changed, waiting for the frame to mask or unmask them.
+    secure_changes: Rc<RefCell<Vec<zgui_dom::NodeKey>>>,
     /// Clipboard text on its way into an element, waiting for the frame that will type it in.
     ///
     /// A paste edits the document and announces an input event, and both of those are a frame's
@@ -584,10 +587,13 @@ impl Window {
             (atlas_limits.max_texture_size - 2).max(1) as u32,
         );
         let sources = images.source_queue();
-        dom.set_attribute_hook(Rc::new(move |node, name, value| {
-            if name.as_str() == "src" {
-                sources.borrow_mut().push((node, value.map(str::to_owned)));
-            }
+        let secure_changes: Rc<RefCell<Vec<zgui_dom::NodeKey>>> = Rc::default();
+        let secure_heard = Rc::clone(&secure_changes);
+        dom.watch_attributes_of(zgui_interned::ElementName::new("field"));
+        dom.set_attribute_hook(Rc::new(move |node, name, value| match name.as_str() {
+            "src" => sources.borrow_mut().push((node, value.map(str::to_owned))),
+            crate::editing::SECURE => secure_heard.borrow_mut().push(node),
+            _ => {}
         }));
         let dom_handle = DomHandle::from_rc(Rc::clone(&dom) as Rc<dyn zgui_view::Dom>);
         let document_id = dom.document_id();
@@ -731,6 +737,7 @@ impl Window {
             selecting: None,
             clipboard: Vec::new(),
             wants_paste: Vec::new(),
+            secure_changes,
             pastes: Vec::new(),
             ime: zgui_input::Ime::new(),
             queued: Vec::new(),

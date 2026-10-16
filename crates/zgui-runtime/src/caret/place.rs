@@ -72,6 +72,10 @@ pub struct Located {
     /// paragraph's text node holds the break that ends it, and the model's buffer is built by
     /// reading those nodes straight through. So this is the whole of the way between a model offset
     /// and a run-and-offset pair.
+    ///
+    /// For a secure field the nodes hold bullets, and every "model offset" in this type is an
+    /// offset into the bullets. [`Editors::to_model`](crate::editing::Editors::to_model) and
+    /// [`Editors::shown_selection`](crate::editing::Editors::shown_selection) convert.
     pub runs: Vec<usize>,
 }
 
@@ -135,6 +139,9 @@ impl Located {
     }
 
     /// The source position an offset in the editing model's own text names.
+    ///
+    /// An offset into the text the document holds, which is the model's text for a plain field
+    /// and its bullets for a secure one.
     ///
     /// The model's text is the runs written out one after another, break characters and all: a
     /// paragraph's node holds the break that ends it, so there is nothing between two runs to

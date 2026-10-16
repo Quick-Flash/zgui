@@ -489,7 +489,7 @@ impl Window {
             let layout = self.layout.borrow();
             crate::caret::Located::of(&layout, &self.text, node).and_then(|located| {
                 located.line_step(
-                    selection.focus,
+                    self.editors.to_shown(node, selection.focus),
                     selection.affinity,
                     down,
                     self.vertical_goal,
@@ -497,9 +497,9 @@ impl Window {
             })
         };
         let (focus, affinity) = match stepped {
-            Some((focus, affinity, goal)) => {
+            Some((shown, affinity, goal)) => {
                 self.vertical_goal = Some(goal);
-                (focus, affinity)
+                (self.editors.to_model(node, shown), affinity)
             }
             None => {
                 // No line in that direction: the edge of the text, which ends the run.
@@ -543,12 +543,18 @@ impl Window {
     /// is in: a candidate window beside the field rather than beside the insertion point is
     /// visible, and is not wrong about which surface or which element is being typed into.
     fn caret_area(&self, node: zgui_dom::NodeKey) -> Option<zgui_platform::TextInput> {
+        // A secure field asks the input method for a password purpose: no prediction, no learning.
+        let purpose = if self.editors.is_secure(node) {
+            zgui_platform::TextInputPurpose::Password
+        } else {
+            zgui_platform::TextInputPurpose::Normal
+        };
         if let Some(caret) = self.caret_rect() {
             return Some(zgui_input::ime::caret_area(
                 caret.origin,
                 caret.size.height,
                 zgui_geom::Scale::new(self.scale),
-                zgui_platform::TextInputPurpose::Normal,
+                purpose,
             ));
         }
         let layout = self.layout.borrow();
@@ -558,7 +564,7 @@ impl Window {
             box_.origin,
             box_.size.height,
             zgui_geom::Scale::new(self.scale),
-            zgui_platform::TextInputPurpose::Normal,
+            purpose,
         ))
     }
 
@@ -734,14 +740,16 @@ impl Window {
                 let Some(key) = zgui_view_dom::id::to_document(node) else {
                     return;
                 };
-                let edited = {
+                {
                     let document = self.document.borrow();
-                    self.editors.select(&document, key, range)
-                };
+                    self.editors.select(&document, key, range);
+                }
                 // The model clamps to the text it holds, so what it settled on is what the record
                 // has to say too: two answers here is a field that types where nothing is drawn.
-                if let Some(selection) = edited.selection {
-                    self.host.write_selection(key, selection);
+                // Written back even when the model did not move, because the record was clamped
+                // against the text the document holds, which can be longer than the model's.
+                if let Some(selection) = self.editors.selection(key) {
+                    self.host.write_selection(key, selection.range());
                 }
             }
             Command::SetValue { node, text } => {

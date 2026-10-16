@@ -291,6 +291,8 @@ impl Window {
         mark("f.commands");
         self.binding.checkpoint();
         self.carry_out_commands(timestamp);
+        // Before the restyle, so a secure field's text is masked before anything shapes it.
+        self.apply_secure_changes();
         // After the flush, which is where a finished decode's task pushed its result, and before
         // the line below that closes the frame's window for producing changes: a picture that
         // landed during this frame's own flush is shown by this frame, one settle later. A settle
