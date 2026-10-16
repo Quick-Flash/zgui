@@ -203,6 +203,9 @@ impl Dom for RecordingDom {
             name: name.as_str().to_owned(),
             value: value.map(str::to_owned),
         });
+        if name.as_str() == "secure" {
+            self.secure_changed(el);
+        }
     }
 
     fn set_classes(&self, el: NodeId, classes: &[ClassName]) {

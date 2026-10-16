@@ -101,6 +101,7 @@ pub fn Textarea(
         label,
         labelled_by,
         role: Role::MultilineTextInput,
+        secure: None,
     }
     .wire();
     let on_input = field::reporting(value, on_change);

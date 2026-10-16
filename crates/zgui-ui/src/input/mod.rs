@@ -57,6 +57,45 @@ const SHEET: &str = "zui-input";
 /// a writable signal and every keystroke is written into it, so the signal says what the field
 /// says without a callback copying it across. `on_change` is told either way, on every change, as
 /// it happens.
+///
+/// # Secure
+///
+/// Give `secure` for a password. While it is `true`, the field shows one bullet per character,
+/// copy and cut do nothing, word movement goes to the ends of the field, an input method is asked
+/// for a password, and a reader is told it is a password field. The value reaches the caller
+/// through `value` and `on_change` only. Set it to `false` to reveal the value in place: the caret,
+/// the selection and undo stay as they are.
+///
+/// ```
+/// use zgui::prelude::*;
+/// use zgui::reactive::RwSignal;
+/// use zgui::{component, view};
+/// use zgui_ui::prelude::*;
+///
+/// /// A password and a button that shows it.
+/// #[component]
+/// fn Password() -> impl IntoView {
+///     let password = RwSignal::new_local(String::new());
+///     let revealed = RwSignal::new_local(false);
+///     view! {
+///         row {
+///             Input(
+///                 value = password,
+///                 secure = Signal::derive_local(move || !revealed.get()),
+///                 label = "Password"
+///             )
+///             Button(
+///                 on:click = move |_| revealed.set(!revealed.get_untracked()),
+///                 a11y:toggled_on = revealed
+///             ) {"Show"}
+///         }
+///     }
+/// }
+/// ```
+///
+/// Leave `secure` out for a field that is never secure, which then costs nothing extra. A field
+/// given `secure` is built empty and loads its value through the editing model, so the view never
+/// holds the value as text.
 #[component]
 pub fn Input(
     /// The text, when the caller holds it.
@@ -95,6 +134,11 @@ pub fn Input(
     /// Where to record this component's own element, for relating it to something else.
     #[prop(optional)]
     node_ref: Option<NodeRef>,
+    /// Whether the value is a secret, such as a password. See [Secure](#secure).
+    ///
+    /// Takes a signal, or the `Option` a wrapping component holds.
+    #[prop(optional)]
+    secure: Option<Signal<bool, LocalStorage>>,
     /// Classes merged after the field's own.
     #[prop(into, optional)]
     class: Classes,
@@ -116,6 +160,7 @@ pub fn Input(
         label,
         labelled_by,
         role: Role::TextInput,
+        secure,
     }
     .wire();
     let on_input = field::reporting(value, on_change);
