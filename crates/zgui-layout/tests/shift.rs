@@ -50,7 +50,7 @@ fn page() -> Fixture {
 }
 
 /// One fragment's kind, border box, ink, clip chain and flags, as a value that compares.
-type Row = (String, [f32; 4], [f32; 4], u32, u8);
+type Row = (String, [f32; 4], [f32; 4], u32, u16);
 
 fn snapshot(store: &LayoutStore) -> Vec<Row> {
     let root = store.root().expect("a root box");

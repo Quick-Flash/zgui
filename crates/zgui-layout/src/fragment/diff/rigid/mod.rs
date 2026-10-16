@@ -148,6 +148,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             blending: fragment
                 .flags
                 .contains(FragmentFlags::HAS_BLENDING_DESCENDANT),
+            reads: fragment.flags.intersects(FragmentFlags::READS_BACKDROP),
             disjoint: fragment.subtree_disjoint,
             rigid: true,
             order: fragment.subtree_order,

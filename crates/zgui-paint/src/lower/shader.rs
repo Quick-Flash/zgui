@@ -87,9 +87,9 @@ impl ShaderStyle {
     ///
     /// A filter does, for the reason every filter does: it reads the content, so the content has
     /// to exist somewhere before it is read. The effect that draws the box needs nothing — it *is*
-    /// the box's painting.
+    /// the box's painting. A backdrop effect reads what is beneath the box and needs nothing either.
     pub fn needs_isolation(&self) -> bool {
-        self.filter.is_some() || self.backdrop.is_some()
+        self.filter.is_some()
     }
 }
 

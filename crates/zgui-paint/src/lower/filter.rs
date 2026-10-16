@@ -45,12 +45,11 @@ impl GroupPaint {
     ///
     /// The fold is decided elsewhere and needs the subtree, so it is deliberately not part of this:
     /// a blend mode, a filter or an explicit isolation needs a boundary whatever the geometry says,
-    /// and opacity is the one that sometimes does not.
+    /// and opacity is the one that sometimes does not. A backdrop filter is also absent: it reads
+    /// what is beneath the box and composites over it, and needs a boundary only for a descendant
+    /// that reads what is behind it too (see [`isolation`](crate::emit::group::isolation)).
     pub fn needs_isolation(&self) -> bool {
-        !self.filters.is_empty()
-            || !self.backdrop.is_empty()
-            || self.isolated
-            || self.blend != peniko::BlendMode::default()
+        !self.filters.is_empty() || self.isolated || self.blend != peniko::BlendMode::default()
     }
 }
 

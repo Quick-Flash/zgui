@@ -352,6 +352,9 @@ pub(crate) fn place(
     if nested_inline || ink::paints_nothing(&node.style, border) {
         flags = flags.union(FragmentFlags::PAINTS_NOTHING);
     }
+    if filter::filters_backdrop(&node.style) {
+        flags = flags.union(FragmentFlags::FILTERS_BACKDROP);
+    }
 
     Some(Placed {
         border_box,

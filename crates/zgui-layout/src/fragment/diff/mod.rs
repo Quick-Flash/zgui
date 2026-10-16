@@ -361,6 +361,9 @@ struct Folded {
     subtree_ink: Rect<DevicePx, Device>,
     /// Whether anything at or below this box blends with what is behind it.
     blending: bool,
+    /// Whether anything at or below this box reads what is behind it: it blends with it or
+    /// filters it.
+    reads: bool,
     /// Whether nothing in this subtree overlaps anything else in it.
     disjoint: bool,
     /// Whether every piece in this subtree moves by the same vector as the box above it.
@@ -375,6 +378,7 @@ impl Folded {
         Self {
             subtree_ink: Rect::ZERO,
             blending: false,
+            reads: false,
             disjoint: true,
             rigid: true,
             order: (HitOrder::MAX, 0),
@@ -551,6 +555,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         }
         let first_fragment = (!fragments.is_empty()).then(|| self.scratch.written[fragments.start]);
         let mut blending = placed.blends;
+        let mut below = false;
         let mut disjoint = true;
         let mut rigid = placed.rigid;
         let mut subtree_ink = self.scratch.child_inks[inks_mark..]
@@ -641,6 +646,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             };
             self.scratch.child_inks.push(folded.subtree_ink);
             blending |= folded.blending;
+            below |= folded.reads;
             disjoint &= folded.disjoint;
             rigid &= folded.rigid;
             subtree_ink = subtree_ink.union(folded.subtree_ink);
@@ -660,10 +666,17 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         disjoint &= !child_inks.iter().any(|child| overlaps(ink, *child));
         disjoint &= pairwise_disjoint(child_inks);
 
+        let mut folded = FragmentFlags::EMPTY;
+        if blending {
+            folded = folded.union(FragmentFlags::HAS_BLENDING_DESCENDANT);
+        }
+        if below {
+            folded = folded.union(FragmentFlags::READS_BACKDROP_BELOW);
+        }
         self.record_fold(
             fragments.clone(),
             subtree_ink,
-            blending,
+            folded,
             disjoint,
             rigid,
             order,
@@ -674,6 +687,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         Folded {
             subtree_ink,
             blending,
+            reads: below || placed.blends || placed.flags.contains(FragmentFlags::FILTERS_BACKDROP),
             disjoint,
             rigid,
             order,
@@ -846,6 +860,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         let fragments = self.store.fragments_of_box(child);
         let mut subtree_ink = Rect::ZERO;
         let mut blending = false;
+        let mut reads = false;
         let mut disjoint = true;
         let mut rigid = true;
         let mut order = (HitOrder::MAX, 0);
@@ -861,6 +876,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             blending |= fragment
                 .flags
                 .contains(FragmentFlags::HAS_BLENDING_DESCENDANT);
+            reads |= fragment.flags.intersects(FragmentFlags::READS_BACKDROP);
             disjoint &= fragment.subtree_disjoint;
             rigid &= fragment.subtree_rigid;
             order = (
@@ -871,6 +887,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         Folded {
             subtree_ink,
             blending,
+            reads,
             disjoint,
             rigid,
             order,
@@ -1253,9 +1270,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         if let Some(fragment) = self.store.fragment_mut(frag) {
             fragment.kind = kind;
             fragment.parent = parent;
-            let kept = fragment
-                .flags
-                .contains(FragmentFlags::HAS_BLENDING_DESCENDANT);
+            let kept = fragment.flags.intersection(FragmentFlags::FOLDED);
             fragment.border_box = next.border_box;
             fragment.padding_box = next.padding_box;
             fragment.content_box = next.content_box;
@@ -1272,11 +1287,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             // Kept on the fragment because the painter keys its recording on it: a line whose cut
             // moved while its rectangle stood still is re-encoded only if the fragment says so.
             fragment.content_hash = next.content_hash;
-            fragment.flags = if kept {
-                next.flags.union(FragmentFlags::HAS_BLENDING_DESCENDANT)
-            } else {
-                next.flags
-            };
+            fragment.flags = next.flags.union(kept);
             if change != Change::Identical {
                 counter::bump(Counter::FragmentsRebuilt);
             }
@@ -1424,8 +1435,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         kind: FragmentKind,
         next: &Geometry,
     ) -> Option<[Option<Rect<DevicePx, Device>>; 4]> {
-        let unflagged =
-            |flags: FragmentFlags| flags.without(FragmentFlags::HAS_BLENDING_DESCENDANT);
+        let unflagged = |flags: FragmentFlags| flags.without(FragmentFlags::FOLDED);
         if kind != FragmentKind::Box
             || previous.kind != kind
             || unflagged(previous.flags) != unflagged(next.flags)
@@ -1503,7 +1513,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         &mut self,
         fragments: core::ops::Range<usize>,
         subtree_ink: Rect<DevicePx, Device>,
-        blending: bool,
+        folded: FragmentFlags,
         disjoint: bool,
         rigid: bool,
         order: (HitOrder, HitOrder),
@@ -1517,13 +1527,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             fragment.subtree_disjoint = disjoint;
             fragment.subtree_rigid = rigid;
             fragment.subtree_order = order;
-            fragment.flags = if blending {
-                fragment.flags.union(FragmentFlags::HAS_BLENDING_DESCENDANT)
-            } else {
-                fragment
-                    .flags
-                    .without(FragmentFlags::HAS_BLENDING_DESCENDANT)
-            };
+            fragment.flags = fragment.flags.without(FragmentFlags::FOLDED).union(folded);
         }
     }
 }

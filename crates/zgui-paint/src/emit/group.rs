@@ -73,6 +73,18 @@ pub fn isolation(style: &PaintStyle, fragment: &Fragment) -> Isolation {
     if style.group.isolates_blending && blending_below {
         return Isolation::Target;
     }
+    // A backdrop filter makes the box a backdrop root: what reads the backdrop below it reads the
+    // box's own content and no further. Without such a reader the group is the identity, and the
+    // box draws straight onto what is beneath it.
+    if fragment.flags.contains(FragmentFlags::READS_BACKDROP_BELOW)
+        && (style.group.isolates_blending
+            || style
+                .shader
+                .as_ref()
+                .is_some_and(|shader| shader.backdrop.is_some()))
+    {
+        return Isolation::Target;
+    }
     if style.group.opacity >= 1.0 {
         return Isolation::None;
     }
@@ -339,6 +351,37 @@ mod tests {
         assert_eq!(
             isolation(&identity_filter(), &fragment(true, false)),
             Isolation::None
+        );
+    }
+
+    /// The style of a box with a `backdrop-filter`.
+    fn frosted() -> PaintStyle {
+        let mut style = translucent(1.0);
+        style.group.backdrop.push(zgui_scene::Filter::Blur(4.0));
+        style.group.isolates_blending = true;
+        style
+    }
+
+    #[test]
+    fn a_backdrop_with_nothing_below_reading_the_backdrop_needs_no_target() {
+        // The backdrop is drawn before the group opens, so a group around the box's own content
+        // composites that content unchanged.
+        assert_eq!(
+            isolation(&frosted(), &fragment(false, false)),
+            Isolation::None
+        );
+    }
+
+    #[test]
+    fn a_backdrop_with_a_backdrop_reader_below_takes_a_target() {
+        // A backdrop root: what reads the backdrop below it reads the box's content and no further.
+        let mut below = fragment(false, false);
+        below.flags = below.flags.union(FragmentFlags::READS_BACKDROP_BELOW);
+        assert_eq!(isolation(&frosted(), &below), Isolation::Target);
+        assert_eq!(
+            isolation(&frosted(), &fragment(false, true)),
+            Isolation::Target,
+            "and so does a blending descendant"
         );
     }
 

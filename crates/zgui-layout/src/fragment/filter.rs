@@ -55,9 +55,14 @@ fn effect(style: &ComputedStyle, property: &str, scale: f32) -> Option<Filter> {
 pub fn reads_outside(style: &ComputedStyle, scale: f32) -> bool {
     own(style, scale).iter().any(|it| !it.is_per_pixel())
         || backdrop(style, scale).iter().any(|it| !it.is_per_pixel())
-        || !style.get_effects().backdrop_filter.0.is_empty()
         // A backdrop reads what is beneath it whatever its chain does, and an application's is no
         // different: the copy it samples is a region of the composite, not of anything it wrote.
+        || filters_backdrop(style)
+}
+
+/// Whether the box declares a `backdrop-filter`, its own or an application's.
+pub fn filters_backdrop(style: &ComputedStyle) -> bool {
+    !style.get_effects().backdrop_filter.0.is_empty()
         || zgui_css::values::custom::text(style, zgui_scene::property::BACKDROP_FILTER)
             .is_some_and(|name| !name.trim().is_empty())
 }
