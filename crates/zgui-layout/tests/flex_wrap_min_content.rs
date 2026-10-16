@@ -1,5 +1,5 @@
 //! The min-content width of a wrapping flex row is its widest item, so the row can shrink and
-//! wrap (CSS Flexbox §9.9.1).
+//! wrap (CSS Flexible Box Layout, section 9.9.1).
 
 mod support;
 
