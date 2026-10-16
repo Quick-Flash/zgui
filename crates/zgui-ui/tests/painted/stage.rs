@@ -202,11 +202,39 @@ impl Stage {
     /// A surface that comes back from being hidden owes a full redraw, because nothing observed
     /// what the compositor did to it while it was away. That is the event asked for here: it is one
     /// a real desktop sends, it costs one frame, and what it produces is the whole window.
+    ///
+    /// The window paces that redraw as it paces a configure: when the last full redraw ran at the
+    /// same moment, the redraw waits for its deadline. The clock moves on one output frame at a
+    /// time until the redraw ran.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the window draws nothing after a few output frames.
     pub fn repaint(&mut self) {
+        let before = self.frames_drawn();
         self.harness.deliver_to_first(SurfaceEvent::Occluded(true));
         self.harness.settle(64);
         self.harness.deliver_to_first(SurfaceEvent::Occluded(false));
         self.harness.settle(64);
+        for _ in 0..4 {
+            if self.frames_drawn() > before {
+                return;
+            }
+            self.harness.advance(TICK);
+            self.harness.settle(64);
+        }
+        assert!(
+            self.frames_drawn() > before,
+            "the window did not redraw after it was shown again"
+        );
+    }
+
+    /// How many frames the device drew.
+    fn frames_drawn(&self) -> usize {
+        self.log
+            .lock()
+            .unwrap_or_else(|held| held.into_inner())
+            .len()
     }
 
     /// Moves the pointer to `at`, in device pixels, and lets the frames that asks for run.

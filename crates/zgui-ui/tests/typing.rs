@@ -480,8 +480,6 @@ fn a_secure_field_draws_bullets_and_reveals_the_value_with_the_caret_where_it_wa
         "the field is not drawing one bullet per letter"
     );
     caret_after_the_text(&stage, field);
-    // Read before the reveal. In this fixture the full repaint after a value is loaded in place
-    // draws none of the static lines below the field, which is a separate defect.
     let value_tiles = spelling(&stage, plain);
     assert_eq!(value_tiles.len(), 3, "the reference line drew its letters");
 
@@ -495,4 +493,75 @@ fn a_secure_field_draws_bullets_and_reveals_the_value_with_the_caret_where_it_wa
         "the revealed field is not drawing the value"
     );
     caret_after_the_text(&stage, field);
+}
+
+// ---- a value loaded into a focused field ------------------------------------------------------
+
+/// A field driven by a signal, with two static lines below it.
+fn loaded(
+    built: &Built,
+    value: RwSignal<String, zgui::reactive::LocalStorage>,
+) -> impl Fn() -> AnyView + use<> {
+    let built = built.clone();
+    move || {
+        let field = NodeRef::new();
+        let first = NodeRef::new();
+        let second = NodeRef::new();
+        built.keep(&[field, first, second]);
+        AnyView::new(view! {
+            ThemeProvider {
+                column(class = "page") {
+                    Input(
+                        node_ref = field,
+                        class = "field",
+                        label = "Name",
+                        value = value,
+                        on_change = UnsyncCallback::new(move |text: String| value.set(text))
+                    )
+                    text(node_ref = first, class = "reference") {{TYPED}}
+                    text(node_ref = second, class = "reference") {"Other words here"}
+                }
+            }
+        })
+    }
+}
+
+#[test]
+fn a_full_redraw_after_a_value_is_loaded_into_a_focused_field_draws_the_lines_below_it() {
+    let value: RwSignal<String, zgui::reactive::LocalStorage> = RwSignal::new_local(String::new());
+    let built = Built::default();
+    let mut stage = staged!(loaded(&built, value));
+    let field = built.node(0);
+    let first = built.node(1);
+    let second = built.node(2);
+
+    stage.click(stage.centre_of(field));
+    stage.type_text("qqq");
+    stage.settle();
+    stage.repaint();
+    let first_tiles = spelling(&stage, first);
+    let second_tiles = spelling(&stage, second);
+    assert_eq!(first_tiles.len(), 3, "the first line drew its letters");
+    assert!(!second_tiles.is_empty(), "the second line drew its letters");
+
+    // Loaded with no clock movement since the last full redraw, so the next one is paced.
+    value.set("Grace".to_owned());
+    stage.settle();
+    stage.repaint();
+    assert_eq!(text_of(&stage, field), "Grace");
+    assert_eq!(
+        spelling(&stage, field).len(),
+        5,
+        "the field draws the loaded value"
+    );
+    assert_eq!(
+        spelling(&stage, first),
+        first_tiles,
+        "the first line lost its letters"
+    );
+    assert_eq!(
+        spelling(&stage, second),
+        second_tiles,
+        "the second line lost its letters"
+    );
 }
