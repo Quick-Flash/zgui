@@ -184,7 +184,7 @@ pub(super) fn recalc_style_at<'doc, F>(
                 data.styles.primary = Some(with_inherited_map(old, &parent_style));
                 counter::bump(Counter::CustomMapsRefreshed);
             }
-        } else if reads_custom_properties(traversal, data, &names) {
+        } else if reads_custom_properties(traversal, element, data, &names) {
             data.hint.insert(RestyleHint::RECASCADE_SELF);
             candidates = narrowed_candidates(traversal, context, element, data, &names);
         } else if let Some(old) = data.styles.get_primary() {
@@ -283,11 +283,28 @@ fn parent_style(element: E<'_>) -> Option<ServoArc<ComputedValues>> {
 /// Generated content cascades on rules of its own, which are scanned the same way.
 fn reads_custom_properties(
     traversal: &RecalcStyle<'_>,
+    element: E<'_>,
     data: &ElementData,
     changed: &ChangedNames,
 ) -> bool {
     if changed.wildcard {
         return true;
+    }
+    // A custom element reads its style in its own `layout`, which no rule chain records: the
+    // names its implementation lists, or every name.
+    if element.is_custom_element() {
+        match zgui_dom::side::custom::reads(element.store(), element.key()) {
+            None => return true,
+            Some(reads) => {
+                if changed
+                    .names
+                    .iter()
+                    .any(|name| zgui_vocab::prop::custom::reads_name(reads, name))
+                {
+                    return true;
+                }
+            }
+        }
     }
     let Some(style) = data.styles.get_primary() else {
         return true;

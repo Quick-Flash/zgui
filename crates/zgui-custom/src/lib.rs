@@ -87,6 +87,18 @@ pub trait CustomElement: 'static {
 
     /// Emits the element's own primitives for this frame.
     fn paint(&mut self, painter: &mut ScenePainter<'_>);
+
+    /// The custom properties `layout` reads from the computed style, when it reads only some.
+    ///
+    /// A custom property that changes on an ancestor reaches the element, and the element is laid
+    /// out again with the new value. By default every name counts, because the trait cannot see
+    /// what `layout` reads. A list lets a change of any other name pass the element by. Each entry
+    /// is a name without its `--`, or a prefix followed by `*`, as in `["syntax-*"]`.
+    ///
+    /// Asked once, when the element is built.
+    fn custom_properties_read(&self) -> Option<&'static [&'static str]> {
+        None
+    }
 }
 
 /// One registered implementation, shared between the handle and the frame adapters.
@@ -127,7 +139,7 @@ pub struct Custom;
 
 impl Tag for Custom {
     fn name() -> zgui_interned::ElementName {
-        zgui_interned::ElementName::new("custom")
+        zgui_interned::ElementName::new(prop::custom::TAG)
     }
 }
 
@@ -198,6 +210,9 @@ impl<T: CustomElement> CustomHandle<T> {
 pub fn custom<T: CustomElement>(element: T) -> (Element<Custom>, CustomHandle<T>) {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let token = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let reads = element
+        .custom_properties_read()
+        .map(|names| names.join(" "));
     let slot = Rc::new(Slot {
         element: RefCell::new(Box::new(element)),
         layout: |any, cx| {
@@ -232,6 +247,12 @@ pub fn custom<T: CustomElement>(element: T) -> (Element<Custom>, CustomHandle<T>
             slot.paint_revision.get(),
         ))
     });
+    let view = match reads {
+        Some(reads) => view.property(PropKey::new(prop::custom::READS), move || {
+            PropValue::Text(reads.as_str().into())
+        }),
+        None => view,
+    };
     (view, handle)
 }
 

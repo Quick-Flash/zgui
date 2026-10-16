@@ -3,6 +3,7 @@
 //! | Module | Contents |
 //! |---|---|
 //! | `animation` | the second descent an animation that cannot repaint is serviced by |
+//! | `custom_reader` | a custom property change reaching a custom element that names no `var()` |
 //! | `negation` | a complex selector inside `:not()` as its ancestor and attribute move |
 //! | `moved` | an element that moved between its animation mark and the restyle |
 //! | `scope` | the marks a restyle never turns into engine work |
@@ -17,6 +18,8 @@ mod support;
 
 #[path = "restyle/animation.rs"]
 mod animation;
+#[path = "restyle/custom_reader.rs"]
+mod custom_reader;
 #[path = "restyle/damage.rs"]
 mod damage;
 #[path = "restyle/fill.rs"]

@@ -224,3 +224,128 @@ fn a_custom_element_rebuilt_in_place_is_measured_by_its_new_implementation() {
         "the box still answers with the old implementation"
     );
 }
+
+/// A leaf that records the custom property `--c` each time it is laid out.
+struct Reader(std::rc::Rc<std::cell::RefCell<Vec<Option<[f32; 4]>>>>);
+
+impl CustomElement for Reader {
+    fn layout(&mut self, cx: &mut CustomLayoutCx<'_>) -> CustomMeasured {
+        self.0.borrow_mut().push(
+            zgui_css::values::custom::color(cx.style, "c").map(|c| c.to_premultiplied_srgb()),
+        );
+        CustomMeasured {
+            width: cx.known_width.unwrap_or(40.0),
+            height: 10.0,
+            ..CustomMeasured::default()
+        }
+    }
+
+    fn paint(&mut self, _painter: &mut ScenePainter<'_>) {}
+}
+
+/// An attribute on the custom element's parent moves a custom property the element reads in
+/// `layout`; the element is laid out again and reads the new value.
+#[test]
+fn an_attribute_on_the_parent_reaches_a_custom_property_the_element_reads() {
+    use zgui_reactive::prelude::{Get, Set};
+
+    let seen: std::rc::Rc<std::cell::RefCell<Vec<Option<[f32; 4]>>>> = Default::default();
+    let held = std::rc::Rc::clone(&seen);
+    let variant = zgui_reactive::RwSignal::new("a");
+    let mut app = app(
+        "root { display: block; width: 400px; height: 300px }
+         .r { display: block }
+         .r[data-x=a] { --c: rgb(255, 0, 0) }
+         .r[data-x=b] { --c: rgb(0, 0, 255) }",
+        move |cx: &mut BuildCx<'_>| {
+            let (view, _handle) = zgui_custom::custom(Reader(std::rc::Rc::clone(&held)));
+            core::mem::forget(_handle);
+            Box::new(
+                zgui_elements::r#box()
+                    .class("r")
+                    .attribute(zgui_interned::AttrName::new("data-x"), move || {
+                        Some(variant.get().to_owned())
+                    })
+                    .child(view)
+                    .into_view()
+                    .build(cx),
+            )
+        },
+    );
+    app.settle(16);
+    assert_eq!(
+        seen.borrow().last().copied().flatten(),
+        Some([1.0, 0.0, 0.0, 1.0])
+    );
+
+    variant.set("b");
+    app.settle(16);
+    assert_eq!(
+        seen.borrow().last().copied().flatten(),
+        Some([0.0, 0.0, 1.0, 1.0]),
+        "the element read {:?}",
+        seen.borrow()
+    );
+}
+
+/// The same reader, saying it reads `--c` and nothing else.
+struct NarrowReader(std::rc::Rc<std::cell::RefCell<Vec<Option<[f32; 4]>>>>);
+
+impl CustomElement for NarrowReader {
+    fn layout(&mut self, cx: &mut CustomLayoutCx<'_>) -> CustomMeasured {
+        Reader(std::rc::Rc::clone(&self.0)).layout(cx)
+    }
+
+    fn paint(&mut self, _painter: &mut ScenePainter<'_>) {}
+
+    fn custom_properties_read(&self) -> Option<&'static [&'static str]> {
+        Some(&["c"])
+    }
+}
+
+/// An element that names what it reads is laid out again for those names and for no other.
+#[test]
+fn a_custom_element_that_names_what_it_reads_ignores_other_names() {
+    use zgui_reactive::prelude::{Get, Set};
+
+    let seen: std::rc::Rc<std::cell::RefCell<Vec<Option<[f32; 4]>>>> = Default::default();
+    let held = std::rc::Rc::clone(&seen);
+    let variant = zgui_reactive::RwSignal::new("a");
+    let mut app = app(
+        "root { display: block; width: 400px; height: 300px }
+         .r { display: block; --c: rgb(255, 0, 0) }
+         .r[data-x=b] { --u: rgb(0, 255, 0) }
+         .r[data-x=c] { --c: rgb(0, 0, 255) }",
+        move |cx: &mut BuildCx<'_>| {
+            let (view, handle) = zgui_custom::custom(NarrowReader(std::rc::Rc::clone(&held)));
+            core::mem::forget(handle);
+            Box::new(
+                zgui_elements::r#box()
+                    .class("r")
+                    .attribute(zgui_interned::AttrName::new("data-x"), move || {
+                        Some(variant.get().to_owned())
+                    })
+                    .child(view)
+                    .into_view()
+                    .build(cx),
+            )
+        },
+    );
+    app.settle(16);
+    let laid_out = seen.borrow().len();
+
+    variant.set("b");
+    app.settle(16);
+    assert_eq!(
+        seen.borrow().len(),
+        laid_out,
+        "a name the element does not read moved, and it was not laid out again"
+    );
+
+    variant.set("c");
+    app.settle(16);
+    assert_eq!(
+        seen.borrow().last().copied().flatten(),
+        Some([0.0, 0.0, 1.0, 1.0])
+    );
+}

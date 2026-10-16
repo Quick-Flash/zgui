@@ -206,9 +206,19 @@ impl<'a> RecalcStyle<'a> {
     /// The custom properties the element's rule chains read, filed for the readers column.
     ///
     /// The primary chain and every generated-content chain, and every name when the element
-    /// declares custom properties or holds an effect that reads them by any name. An element
-    /// with no rules reads nothing.
-    fn readers_of(&self, data: &ElementData) -> u64 {
+    /// declares custom properties or holds an effect that reads them by any name. A custom element
+    /// also reads what its implementation reads in its own `layout`: the names it lists, or every
+    /// name. An element with no rules reads nothing.
+    fn readers_of(&self, element: Node<'_>, data: &ElementData) -> u64 {
+        // A custom element reads what its implementation says it reads, or every name.
+        let implementation = if element.is_custom_element() {
+            match zgui_dom::side::custom::reads(element.store(), element.key()) {
+                Some(reads) => zgui_dom::side::custom::reads_bloom(reads),
+                None => return zgui_dom::side::readers::ALL,
+            }
+        } else {
+            0
+        };
         let Some(primary) = data.styles.get_primary() else {
             return zgui_dom::side::readers::ALL;
         };
@@ -224,7 +234,7 @@ impl<'a> RecalcStyle<'a> {
         core::iter::once(primary)
             .chain(pseudos)
             .filter_map(|style| style.rules.as_ref())
-            .fold(0, |bits, rules| bits | self.refs_of(rules).bloom)
+            .fold(implementation, |bits, rules| bits | self.refs_of(rules).bloom)
     }
 
     /// What the rule chain ending at `rules` reads and declares, computed once per chain.
@@ -316,7 +326,7 @@ impl<'doc> DomTraversal<Node<'doc>> for RecalcStyle<'_> {
                 pseudo_identity(&data, &PseudoElement::Before),
                 pseudo_identity(&data, &PseudoElement::After),
             ],
-            readers: self.readers_of(&data),
+            readers: self.readers_of(element, &data),
         });
 
         // The engine's descent flag is not cleared here, because this document does not store one:
