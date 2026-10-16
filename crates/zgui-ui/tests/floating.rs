@@ -17,7 +17,9 @@ mod desktop;
 mod device;
 mod painted;
 
+use core::cell::Cell;
 use core::time::Duration;
+use std::rc::Rc;
 
 use zgui::geom::DevicePx;
 use zgui::view;
@@ -702,4 +704,63 @@ fn a_command_list_paints_its_items_without_being_opened() {
         }
     }));
     assert_painted(&stage, "New invoice");
+}
+
+// ---- a caller's ref on the trigger -------------------------------------------------------------
+
+#[test]
+fn a_native_select_with_a_callers_ref_opens_and_closes_on_a_press() {
+    let made = Rc::new(Cell::new(None));
+    let keep = Rc::clone(&made);
+    let mut stage = staged!(move || {
+        let field = zgui::prelude::NodeRef::new();
+        keep.set(Some(field));
+        AnyView::new(view! {
+            ThemeProvider {
+                column(class = "page") {
+                    NativeSelect(node_ref = field, placeholder = "Choose a reason", a11y:label = "Reason") {
+                        NativeSelectOption(value = "price") {"Too expensive"}
+                        NativeSelectOption(value = "use") {"Not used enough"}
+                    }
+                }
+            }
+        })
+    });
+    let field = made.get().expect("the view was built");
+    assert!(field.get().is_some(), "the caller's ref is bound");
+
+    stage.click(aim(&stage, "Choose a reason"));
+    stage.wait(SETTLED);
+    assert_painted(&stage, "Not used enough");
+
+    stage.click(aim(&stage, "Choose a reason"));
+    stage.wait(SETTLED);
+    assert_absent(&stage, "Not used enough");
+}
+
+#[test]
+fn a_date_picker_with_a_callers_ref_opens_and_closes_on_a_press() {
+    let made = Rc::new(Cell::new(None));
+    let keep = Rc::clone(&made);
+    let mut stage = staged!(move || {
+        let field = zgui::prelude::NodeRef::new();
+        keep.set(Some(field));
+        AnyView::new(view! {
+            ThemeProvider {
+                column(class = "page") {
+                    DatePicker(node_ref = field, label = "Day", placeholder = "Pick a day")
+                }
+            }
+        })
+    });
+    let field = made.get().expect("the view was built");
+    assert!(field.get().is_some(), "the caller's ref is bound");
+
+    stage.click(aim(&stage, "Pick a day"));
+    stage.wait(SETTLED);
+    assert_painted(&stage, "Su");
+
+    stage.click(aim(&stage, "Pick a day"));
+    stage.wait(SETTLED);
+    assert_absent(&stage, "Su");
 }

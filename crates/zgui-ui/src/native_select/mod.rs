@@ -177,12 +177,16 @@ pub fn NativeSelect(
 ) -> impl IntoView {
     install_stylesheet(SHEET, NativeSelectStyle::CSS);
     let surface = OverlayState::uncontrolled(false, None);
+    // A caller's ref becomes the overlay's own handle, so the list is anchored to the element the
+    // caller's ref binds.
+    let surface = match node_ref {
+        Some(trigger) => surface.anchored_to(trigger),
+        None => surface,
+    };
     let listbox = Listbox::new(surface, value, default_value, on_change).provide();
     // A placeholder takes the place of the first option's text, so with one no option offers it.
     let first = placeholder.is_none().then(|| FirstShown::new().provide());
-    // The overlay's own handle rather than a fresh one, because the list is anchored to whatever
-    // that handle binds — a caller's ref is honoured the same way a date picker honours one.
-    let element = node_ref.unwrap_or_else(|| surface.trigger());
+    let element = surface.trigger();
     // Held rather than moved: the options are written once and built in two places — the open
     // list, and the hidden catalogue that teaches the closed control what its value reads as.
     let children = StoredValue::new_local(children);
