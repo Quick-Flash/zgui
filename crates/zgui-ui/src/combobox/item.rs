@@ -10,7 +10,7 @@ use zgui_ui_icons::set::mark::CHECK;
 
 use crate::combobox::SHEET;
 use crate::combobox::style::ComboboxStyle;
-use crate::listbox::{Listbox, ListboxCatalogue, ListboxOption, use_listbox_option};
+use crate::listbox::{Listbox, ListboxCatalogue, ListboxGroup, ListboxOption, use_listbox_option};
 use crate::select::{SHEET as SELECT_SHEET, SelectStyle};
 use crate::support::activate_on_press;
 
@@ -179,6 +179,11 @@ fn ComboboxOption(
         option = option.on_select(on_select);
     }
     let registered = use_listbox_option(option);
+    if registered.is_some()
+        && let Some(group) = ListboxGroup::current()
+    {
+        group.count_in();
+    }
 
     let value = StoredValue::new_local(value);
     let chosen =

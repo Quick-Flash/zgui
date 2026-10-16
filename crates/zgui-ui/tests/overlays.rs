@@ -1869,6 +1869,43 @@ fn a_command_palette_draws_no_combobox_frame_and_no_tick() {
 }
 
 #[test]
+fn a_command_group_that_the_filter_empties_hides_with_its_heading_and_separator() {
+    let harness = Harness::open();
+    harness.mount(|| {
+        view! {
+            Command {
+                CommandInput()
+                CommandList {
+                    CommandGroup(label = "A") {CommandItem(value = "x") {"x"}}
+                    CommandSeparator()
+                    CommandGroup(label = "B") {CommandItem(value = "y") {"y"}}
+                    CommandEmpty {"None"}
+                }
+            }
+        }
+    });
+    let field = expect(&harness, "zui-combobox__input");
+    let groups = every(&harness, "zui-command__group");
+    let hidden = |group: NodeId| attribute(&harness, group, "hidden").is_some();
+    assert!(!hidden(groups[0]) && !hidden(groups[1]));
+    assert!(find(&harness, "zui-menu__separator").is_some());
+
+    for character in "zzz".chars() {
+        harness.type_char(field, character);
+    }
+    assert!(hidden(groups[0]) && hidden(groups[1]), "both groups hide");
+    assert!(find(&harness, "zui-menu__separator").is_none());
+    assert!(find(&harness, "zui-combobox__empty").is_some());
+
+    for _ in 0..3 {
+        harness.press(field, NamedKey::Backspace);
+    }
+    harness.type_char(field, 'x');
+    assert!(!hidden(groups[0]), "the group with a match shows");
+    assert!(hidden(groups[1]), "the group without one stays hidden");
+}
+
+#[test]
 fn a_command_dialog_is_a_labelled_dialog_with_no_heading_on_the_surface() {
     // A palette's field is its heading, so the name is written rather than shown — and a dialog
     // with neither would be announced as an unlabelled dialog.

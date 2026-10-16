@@ -73,6 +73,8 @@ style! { pub CommandStyle =>
     // A command has no tick, so its row keeps no room for one at the end.
     ".zui-select__item.zui-command__item { padding: 6px 8px; }"
     ".zui-command__group { display: flex; flex-direction: column; gap: 0; padding: var(--zui-space-xs); }"
+    // A group the filter has emptied says `hidden`, which the rule above would otherwise override.
+    ".zui-command__group[hidden] { display: none; }"
     // A group's heading is quieter than a menu's, because a palette is read by typing rather than
     // by scanning: the headings are there to say what *kind* of thing was found, not to be aimed at.
     ".zui-command__group .zui-menu__label {
