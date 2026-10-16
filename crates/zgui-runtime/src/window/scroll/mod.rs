@@ -247,7 +247,7 @@ impl Window {
             return;
         }
         let mut again = core::mem::take(&mut self.carried_scrolls);
-        again.append(&mut self.owed_scrolls);
+        again.extend(core::mem::take(&mut self.owed_scrolls));
         self.owed_scrolls = again;
     }
 
