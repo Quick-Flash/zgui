@@ -140,7 +140,7 @@ impl FragmentKind {
 
 /// Properties of a fragment that painting, damage and hit testing branch on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct FragmentFlags(u8);
+pub struct FragmentFlags(u16);
 
 impl FragmentFlags {
     /// Nothing set.
@@ -164,16 +164,46 @@ impl FragmentFlags {
     /// Decided from the style when the fragment is placed, and read where a change to the box is
     /// weighed for damage — a box that paints nothing owes none for a move of its own.
     pub const PAINTS_NOTHING: Self = Self(1 << 6);
+    /// A line that paints the effects of the nested inline boxes on it: their backgrounds,
+    /// borders, decorations, text shadows or baseline shifts.
+    ///
+    /// Read where damage is weighed: a style change on one of those boxes repaints the line.
+    pub const INLINE_EFFECTS: Self = Self(1 << 7);
+    /// This fragment filters what is painted behind it: it has a `backdrop-filter`.
+    pub const FILTERS_BACKDROP: Self = Self(1 << 8);
+    /// A fragment strictly below this one reads what is painted behind it: it blends with it or
+    /// filters it.
+    ///
+    /// Read where a box decides whether it needs a target of its own: a backdrop root isolates
+    /// only for such a reader.
+    pub const READS_BACKDROP_BELOW: Self = Self(1 << 9);
+    /// The flags the unwind writes from the subtree, which a comparison of the box itself ignores.
+    pub const FOLDED: Self = Self::HAS_BLENDING_DESCENDANT.union(Self::READS_BACKDROP_BELOW);
+    /// The flags that say this fragment or one below it reads what is painted behind it.
+    pub const READS_BACKDROP: Self = Self::HAS_BLENDING_DESCENDANT
+        .union(Self::FILTERS_BACKDROP)
+        .union(Self::READS_BACKDROP_BELOW);
 
     /// Whether every flag in `other` is set here.
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
     }
 
+    /// Whether any flag in `other` is set here.
+    pub const fn intersects(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
+
     /// The union of two sets.
     #[must_use]
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
+    }
+
+    /// The flags set both here and in `other`.
+    #[must_use]
+    pub const fn intersection(self, other: Self) -> Self {
+        Self(self.0 & other.0)
     }
 
     /// The same set with `other` removed.
@@ -183,7 +213,7 @@ impl FragmentFlags {
     }
 
     /// The raw bits, for transcripts.
-    pub const fn bits(self) -> u8 {
+    pub const fn bits(self) -> u16 {
         self.0
     }
 }

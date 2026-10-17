@@ -3,6 +3,7 @@
 // The harness is compiled into several test targets and each uses a different part of it.
 #![allow(dead_code, unreachable_pub)]
 
+pub(crate) mod find;
 pub(crate) mod mono;
 pub(crate) mod text;
 

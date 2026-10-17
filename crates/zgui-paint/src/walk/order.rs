@@ -76,6 +76,16 @@ pub struct Emission<'a> {
     /// `background-image` does not inherit, and a line box belongs to an anonymous box generated
     /// below whatever declared it.
     pub text_fill: Option<&'a crate::lower::background::GradientSpec>,
+    /// The parts of nested inline boxes a line paints, in tree order.
+    ///
+    /// Empty for every fragment that is not a line with [`FragmentFlags::INLINE_EFFECTS`]. Their
+    /// colours already carry the folded alpha.
+    ///
+    /// [`FragmentFlags::INLINE_EFFECTS`]: zgui_layout::fragment::FragmentFlags::INLINE_EFFECTS
+    pub inline: &'a [crate::emit::inline::InlinePaint],
+    /// Whether the fragment is the box of a nested inline box, whose decorations and outline the
+    /// lines it is on paint.
+    pub nested_inline: bool,
     /// Where glyphs come from.
     pub glyphs: &'a dyn GlyphSource,
     /// Where a run a custom element shaped itself gets its tiles.
@@ -131,8 +141,9 @@ pub(crate) fn fragment_tracked(
     let style = faded(emission.style, emission.alpha);
     let mut pushed = 0;
     // A box whose decorations draw nothing at all is the overwhelming majority of containers, and
-    // asking once is cheaper than three calls that each resolve a paint and push no primitive.
-    if !style.paints_nothing() {
+    // asking once is cheaper than three calls that each resolve a paint and push no primitive. A
+    // nested inline box draws its decorations on the lines it is on.
+    if !style.paints_nothing() && !emission.nested_inline {
         pushed += box_::outer_shadows(scene, &style, emission.box_placement);
         pushed += box_::background_and_border(
             scene,
@@ -154,7 +165,7 @@ pub(crate) fn fragment_tracked(
 
 /// Emits a fragment's outline, which is drawn after its descendants.
 pub fn outline(scene: &mut Scene, emission: &Emission<'_>) -> usize {
-    if vanished(emission.alpha) {
+    if vanished(emission.alpha) || emission.nested_inline {
         return 0;
     }
     let style = faded(emission.style, emission.alpha);
@@ -193,10 +204,18 @@ fn content_tracked(
     let pushed = match fragment.kind {
         FragmentKind::Box => 0,
         FragmentKind::Line { paragraph, line } => {
+            // The backgrounds of the nested inline boxes first, under the selection and the
+            // glyphs.
+            let mut pushed = crate::emit::inline::boxes(
+                scene,
+                emission.inline,
+                emission.shaders,
+                emission.pointer,
+            );
             // The selection under the glyphs, the caret over them. Neither order is a preference:
             // a band drawn over opaque text hides the text it is meant to mark, and a caret drawn
             // under it disappears inside whichever letter it is sitting on.
-            let mut pushed = marks(
+            pushed += marks(
                 scene,
                 emission,
                 fragment.box_,
@@ -213,9 +232,11 @@ fn content_tracked(
                 text::Inherited {
                     text_fill: emission.text_fill,
                     decorations: emission.decorations,
+                    inline: emission.inline,
                 },
                 emission.text_placement,
             );
+            pushed += crate::emit::inline::outlines(scene, emission.inline);
             pushed
                 + marks(
                     scene,
@@ -238,6 +259,7 @@ fn content_tracked(
             text::Inherited {
                 text_fill: emission.text_fill,
                 decorations: emission.decorations,
+                inline: &[],
             },
             emission.text_placement,
         ),
@@ -335,7 +357,7 @@ fn content_tracked(
             scene,
             part,
             fragment.border_box,
-            emission.scrollbars,
+            scrollbar::resolve(emission.scrollbars, &style.scrollbar),
             emission.box_placement.clip,
         ),
     };
@@ -377,7 +399,7 @@ fn marks(
 /// This is how a folded group opacity is applied: multiplying it into each primitive's own paint
 /// produces the same pixels as compositing the subtree once, exactly when no two primitives in it
 /// overlap — and that condition is decided over the fragment tree before this is reached.
-fn faded(style: &PaintStyle, alpha: f32) -> PaintStyle {
+pub(crate) fn faded(style: &PaintStyle, alpha: f32) -> PaintStyle {
     if alpha >= 1.0 {
         return style.clone();
     }

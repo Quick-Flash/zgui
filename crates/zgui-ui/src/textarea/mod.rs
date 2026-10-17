@@ -101,6 +101,7 @@ pub fn Textarea(
         label,
         labelled_by,
         role: Role::MultilineTextInput,
+        secure: None,
     }
     .wire();
     let on_input = field::reporting(value, on_change);
@@ -108,6 +109,7 @@ pub fn Textarea(
     view! {
         editor(
             node_ref = element,
+            class = "zui-textarea",
             class = TextareaStyle::CLASS,
             tabindex = {Focus::Sequential},
             on:input = move |ev| on_input(ev),

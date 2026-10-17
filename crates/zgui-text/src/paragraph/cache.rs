@@ -65,6 +65,11 @@ impl<E> ParagraphCache<E> {
         self.entries.contains_key(&key)
     }
 
+    /// Which break the result held under one key reflects, read without counting a lookup.
+    pub fn broken_as(&self, key: ParagraphKey) -> Option<zgui_text_style::BreakingKey> {
+        self.entries.get(&key)?.shaped.broken_as()
+    }
+
     /// The result held under one key.
     pub fn get(&self, key: ParagraphKey) -> Option<&ShapedParagraph<E>> {
         let held = self.entries.get(&key);

@@ -333,6 +333,45 @@ mod tests {
     }
 
     #[test]
+    fn a_watched_tag_is_heard_and_stays_out_of_the_replaced_names() {
+        let document = Rc::new(RefCell::new(Document::new()));
+        let dom = DocumentDom::new(Rc::clone(&document));
+        dom.watch_attributes_of(ElementName::new("field"));
+
+        let heard: Heard = Rc::new(RefCell::new(Vec::new()));
+        let sink = Rc::clone(&heard);
+        dom.set_attribute_hook(Rc::new(move |_node, name, value| {
+            sink.borrow_mut()
+                .push((name.as_str().to_owned(), value.map(str::to_owned)));
+        }));
+
+        let field = dom.create_element(ElementName::new("field"));
+        let editor = dom.create_element(ElementName::new("editor"));
+        dom.insert(dom.root(field), field, None);
+        assert!(
+            !document
+                .borrow()
+                .store()
+                .core(dom.index_of(field))
+                .flags()
+                .contains(zgui_dom::node::flags::NodeFlags::IS_REPLACED),
+            "a watched name keeps its content in the document"
+        );
+
+        Dom::set_attribute(&dom, field, AttrName::new("secure"), Some(""));
+        Dom::set_attribute(&dom, editor, AttrName::new("secure"), Some(""));
+        Dom::set_attribute(&dom, field, AttrName::new("secure"), None);
+
+        assert_eq!(
+            heard.borrow().as_slice(),
+            &[
+                ("secure".to_owned(), Some(String::new())),
+                ("secure".to_owned(), None),
+            ],
+        );
+    }
+
+    #[test]
     fn a_teardown_on_a_poisoned_document_changes_nothing_and_panics_nowhere() {
         // A batch that panicked poisons the document. The scopes it leaves behind still take their
         // views down on the way out, and a second panic from a cleanup would abort the process.

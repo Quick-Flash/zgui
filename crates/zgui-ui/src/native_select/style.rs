@@ -56,6 +56,7 @@ style! { pub NativeSelectStyle =>
 ".zui-native-select__list {
         padding: var(--zui-space-xs);
         min-width: 128px;
+        max-height: var(--zui-popper-available-height, none);
         overflow-x: hidden;
         overflow-y: auto;
     }"

@@ -130,6 +130,7 @@ fn write(store: &mut LayoutStore, key: BoxKey, style: &ComputedStyle, relayout: 
     if relayout || store.custom_content(key).is_some() {
         mark_dirty(store, key);
     }
+    crate::boxtree::percent::refresh_parent_of(store, key);
     1
 }
 

@@ -420,24 +420,22 @@ impl Scene {
 
     /// Pushes a backdrop filter, returning the order it took or `None` if it was culled.
     pub fn push_backdrop(&mut self, mut backdrop: BackdropFilter) -> Option<DrawOrder> {
+        let slot = backdrop.transform.unwrap_or(SpatialId::VIEWPORT).index();
         tee!(
             self,
             Backdrop,
             backdrops,
-            None,
-            SpatialId::VIEWPORT.index(),
+            backdrop.transform,
+            slot,
             backdrop.bounds,
             backdrop.clone()
         );
-        let order =
-            self.assign_order(backdrop.bounds, backdrop.clip, SpatialId::VIEWPORT.index())?;
+        let order = self.assign_order(backdrop.bounds, backdrop.clip, slot)?;
         backdrop.order = order;
-        // A backdrop names no coordinate system: what it reads is a rectangle of the target as it
-        // already stands, in the device's own coordinates.
         self.record(
             PrimitiveKind::Backdrop,
             self.primitives.backdrops.len(),
-            None,
+            backdrop.transform,
         );
         self.primitives.backdrops.push(backdrop);
         Some(order)

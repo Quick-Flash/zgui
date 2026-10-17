@@ -734,3 +734,42 @@ fn a_font_size_change_marks_no_element_for_the_accessibility_phase() {
         &marked[..marked.len().min(4)]
     );
 }
+
+/// A custom property a running animation's keyframes read computes them again, once; one they do
+/// not read leaves them alone.
+#[test]
+fn only_a_property_the_keyframes_read_computes_them_again() {
+    let _guard = measuring();
+    let mut harness = Harness::new();
+    harness.add_author(
+        "root { display: block }
+         .shown { display: block; animation: enter 100ms linear both }
+         @keyframes enter {
+             from { transform: translate(0px, var(--enter-y, 0px)) }
+             to { transform: translate(0px, 0px) }
+         }",
+    );
+    let shown = harness.append(harness.root, "box");
+    harness.set_classes(shown, &["shown"]);
+    harness.frame();
+    harness.retire_all();
+    let root = harness.root;
+
+    counter::reset();
+    set_custom(&mut harness, root, "spare", "1");
+    let pass = harness.frame();
+    harness.retire_all();
+    let unread = counter::snapshot();
+    assert!(pass.refreshed.is_empty());
+
+    counter::reset();
+    set_custom(&mut harness, root, "enter-y", "-8px");
+    let pass = harness.frame();
+    let read = counter::snapshot();
+    assert_eq!(pass.refreshed, [shown]);
+
+    if COUNTERS_ENABLED {
+        assert_eq!(unread.keyframes_refreshed, 0);
+        assert_eq!(read.keyframes_refreshed, 1);
+    }
+}

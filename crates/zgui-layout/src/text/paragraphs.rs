@@ -310,6 +310,10 @@ impl<S: ParagraphShaper, R: MeasureContent> MeasureContent for Paragraphs<S, R> 
         self.shaper.break_lines(shaped, request)
     }
 
+    fn breaks_reflect(&self, key: ParagraphKey) -> Option<zgui_text_style::BreakingKey> {
+        self.cache.broken_as(key)
+    }
+
     fn strut(&mut self, style: &TextStyle) -> StrutMetrics {
         self.shaper.strut(style)
     }

@@ -16,7 +16,7 @@ use std::borrow::Cow;
 use smallvec::SmallVec;
 use zgui_dom::side::BoxKey;
 use zgui_layout::LayoutStore;
-use zgui_layout::fragment::stacking::{level, z_index};
+use zgui_layout::fragment::stacking::{PaintKey, paint_key};
 
 /// What a walk does at each box.
 pub trait Visitor {
@@ -45,18 +45,14 @@ pub fn walk(store: &LayoutStore, root: BoxKey, visitor: &mut impl Visitor) {
         return;
     }
     if let Some(node) = store.get(root) {
-        let mut kept: SmallVec<[(u8, i32, usize, BoxKey); 16]> = SmallVec::new();
+        let mut kept: SmallVec<[(PaintKey, BoxKey); 16]> = SmallVec::new();
         for (position, &child) in node.children.iter().enumerate() {
             if visitor.descends(store, child) {
-                kept.push((0, 0, position, child));
+                kept.push((paint_key(store, root, node, position, child), child));
             }
         }
-        for entry in &mut kept {
-            entry.0 = level(store, entry.3) as u8;
-            entry.1 = z_index(store, entry.3);
-        }
-        kept.sort_by_key(|(pass, index, position, _)| (*pass, *index, *position));
-        for (_, _, _, child) in kept {
+        kept.sort_by_key(|(key, _)| *key);
+        for (_, child) in kept {
             walk(store, child, visitor);
         }
     }

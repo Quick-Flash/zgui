@@ -26,6 +26,7 @@ use zgui_text::{BreakRequest, LineBand, LineBands, ParagraphContent};
 use std::sync::Arc;
 
 use crate::inline::content::{Generated, Role};
+use crate::inline::kept::KeptBreak;
 use crate::inline::lines::LineBox;
 use crate::inline::resolved::{InlineResolution, Placement};
 use crate::inline::vertical_align::scale_strut;
@@ -58,6 +59,8 @@ pub(crate) struct Ask {
     pub(crate) axis: RequestedAxis,
     /// Whether this answer is the one that will be kept.
     pub(crate) final_pass: bool,
+    /// The block size a percentage height of an atomic inline resolves against, if definite.
+    pub(crate) basis_height: Option<f32>,
 }
 
 impl Ask {
@@ -117,6 +120,8 @@ pub(crate) struct ProbeMemo {
     generation: u32,
     /// The width the probe broke at, as bits, or the two intrinsic constraints.
     constraint: u32,
+    /// The probe's [`Ask::basis_height`], as bits.
+    basis_height: Option<u32>,
     generated: Arc<Generated>,
     root_strut: zgui_text::StrutMetrics,
     boxes: boxes::Boxes,
@@ -152,7 +157,9 @@ pub(crate) fn compute<C: MeasureContent>(
         let state = tree.state_mut(key);
         match state.probe_memo.take() {
             Some(memo)
-                if memo.generation == generation && memo.constraint == constraint_bits(&ask) =>
+                if memo.generation == generation
+                    && memo.constraint == constraint_bits(&ask)
+                    && memo.basis_height == ask.basis_height.map(f32::to_bits) =>
             {
                 Some(memo)
             }
@@ -198,7 +205,14 @@ pub(crate) fn compute<C: MeasureContent>(
             let root_strut = scale_strut(tree.content().strut(&generated.root), scale);
             // Everything on the line that is not a glyph, at the size and the alignment it
             // currently has.
-            let boxes = boxes::resolve(tree, &generated, &root_strut, ask.available, basis);
+            let boxes = boxes::resolve(
+                tree,
+                &generated,
+                &root_strut,
+                ask.available,
+                basis,
+                ask.basis_height,
+            );
             let run_extents = strut::of_runs(tree.content(), &generated.runs, scale);
             let content = ParagraphContent {
                 text: &generated.text,
@@ -234,13 +248,17 @@ pub(crate) fn compute<C: MeasureContent>(
         Constraint::MaxContent => None,
     };
 
+    // A probe that breaks may move the shaper's laid-out form, which the glyphs are drawn from.
+    // The end of the layout pass moves it back to the kept break; see `kept`.
+    if !ask.final_pass {
+        tree.note_probed(key);
+    }
+
     // A pass whose answer is not the one that will be kept, on a context with nothing on its lines
     // that has to be placed twice and no float to band around, is one break and one line-box
-    // computation and nothing else. Answered here so that it writes nothing: it neither moves the
-    // shaper's laid-out form — which is what the paragraph's glyphs are drawn from — nor replaces
-    // the resolution the last kept pass left behind. Both of those would be a measurement taken at
-    // a candidate width becoming what the box is painted as. What it computed is kept for the
-    // pass that will.
+    // computation and nothing else. Answered here so that it does not replace the resolution the
+    // last kept pass left behind: that would make a measurement taken at a candidate width what
+    // the box is painted as. What it computed is kept for the pass that will.
     if !ask.final_pass && !boxes.needs_line_box() && !floats::any_floats(block.as_deref()) {
         let request = BreakRequest {
             runs: &generated.runs,
@@ -271,6 +289,7 @@ pub(crate) fn compute<C: MeasureContent>(
         tree.state_mut(key).probe_memo = Some(Box::new(ProbeMemo {
             generation,
             constraint: constraint_bits(&ask),
+            basis_height: ask.basis_height.map(f32::to_bits),
             generated,
             root_strut,
             boxes,
@@ -294,9 +313,8 @@ pub(crate) fn compute<C: MeasureContent>(
             max_advance,
             indent_basis: max_advance,
             bands: LineBands::new(&bands),
-            // A probe that reaches this loop — a line-box-aligned atomic, a float — still must
-            // not move the shaper's laid-out form: that form is what the kept pass's glyphs are
-            // drawn from.
+            // A probe that reaches this loop — a line-box-aligned atomic, a float — may be
+            // answered from a remembered break.
             probe: !ask.final_pass,
         };
         broken = tree.content().break_lines(summary.key, &request);
@@ -349,6 +367,12 @@ pub(crate) fn compute<C: MeasureContent>(
         bands = next;
     }
 
+    // The form reflects the kept break now, so its key is read rather than hashed again.
+    let kept_key = if ask.final_pass {
+        tree.content().breaks_reflect(summary.key)
+    } else {
+        None
+    };
     let placements = place(
         tree,
         key,
@@ -374,6 +398,18 @@ pub(crate) fn compute<C: MeasureContent>(
         ),
         _ => Default::default(),
     };
+    // Only the kept pass, and only when a nested inline box is on the lines: everything else holds
+    // an empty list, which allocates nothing.
+    let slices = if ask.final_pass
+        && generated
+            .items
+            .iter()
+            .any(|item| matches!(item.role, Role::StartEdge(_)))
+    {
+        crate::inline::slices::compute(tree, &generated, &boxes, &computed, &broken, basis)
+    } else {
+        Vec::new()
+    };
     let paragraph = tree.intern_paragraph(summary.key);
     let resolution = InlineResolution {
         paragraph,
@@ -384,6 +420,15 @@ pub(crate) fn compute<C: MeasureContent>(
         map: generated.map.clone(),
         sources: generated.sources.clone(),
         ellipsis,
+        slices,
+        kept: KeptBreak {
+            generated,
+            boxes: core::mem::take(&mut boxes.geometry),
+            max_advance,
+            indent_basis: max_advance,
+            bands,
+            key: kept_key,
+        },
     };
     let measured = Measured {
         size: Size {

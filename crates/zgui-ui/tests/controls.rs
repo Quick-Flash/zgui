@@ -612,6 +612,91 @@ fn a_field_leaves_tab_and_escape_for_whatever_is_around_it() {
 }
 
 #[test]
+fn a_secure_field_shows_bullets_and_its_owner_holds_the_value() {
+    let harness = Harness::open();
+    let value = RwSignal::new_local(String::new());
+    let revealed = RwSignal::new_local(false);
+    harness.mount(move || {
+        view! {
+            Input(
+                value = value,
+                secure = Signal::derive_local(move || !revealed.get()),
+                label = "Password"
+            )
+        }
+    });
+    let field = harness.only_child();
+    assert_eq!(
+        harness.semantics(field).role,
+        zgui::vocab::Role::PasswordInput
+    );
+    assert_eq!(harness.attribute(field, "secure").as_deref(), Some(""));
+
+    harness.type_char(field, 'h');
+    harness.type_char(field, 'i');
+    assert_eq!(value.get_untracked(), "hi");
+    assert_eq!(text_of(&harness, field), "\u{2022}\u{2022}");
+
+    revealed.set(true);
+    harness.window.frame();
+    assert_eq!(text_of(&harness, field), "hi");
+    assert_eq!(harness.semantics(field).role, zgui::vocab::Role::TextInput);
+    assert_eq!(harness.attribute(field, "secure"), None);
+
+    revealed.set(false);
+    harness.window.frame();
+    assert_eq!(text_of(&harness, field), "\u{2022}\u{2022}");
+}
+
+#[test]
+fn a_secure_field_never_writes_its_starting_value_as_text() {
+    let harness = Harness::open();
+    harness.mount(move || {
+        view! {
+            Input(
+                default_value = "hunter2",
+                secure = Signal::stored_local(true),
+                label = "Password"
+            )
+        }
+    });
+    let field = harness.only_child();
+    assert_eq!(text_of(&harness, field), "\u{2022}".repeat(7));
+    // The value travels to the editing model as a value, and no text node ever holds it.
+    for op in harness.window.dom.transcript().ops() {
+        if let zgui_testkit_view::Op::SetText { text, .. } = &op {
+            assert!(
+                !text.contains("hunter"),
+                "a text node held the value: {text}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_field_with_no_secure_prop_carries_no_secure_attribute() {
+    let harness = Harness::open();
+    harness.mount(|| view! { Input(default_value = "plain", label = "Name") });
+    let field = harness.only_child();
+    assert_eq!(harness.attribute(field, "secure"), None);
+    assert_eq!(text_of(&harness, field), "plain");
+    assert_eq!(harness.semantics(field).role, zgui::vocab::Role::TextInput);
+}
+
+#[test]
+fn a_secure_group_field_shows_bullets() {
+    let harness = Harness::open();
+    let value = RwSignal::new_local(String::new());
+    harness.mount(move || {
+        view! { InputGroup { InputGroupInput(value = value, secure = true) } }
+    });
+    let field = harness.find("zui-field");
+    harness.type_char(field, 'x');
+    assert_eq!(value.get_untracked(), "x");
+    assert_eq!(text_of(&harness, field), "\u{2022}");
+}
+
+#[test]
 fn a_read_only_field_moves_its_caret_and_refuses_every_change() {
     let harness = Harness::open();
     let (on_change, seen) = recorder::<String>();

@@ -82,3 +82,4 @@ They are not linked into any library and are not redistributed as part of a buil
 | `crates/zgui-text-parley/tests/fonts/NotoSans-Regular.ttf` | Noto Sans | The Noto Project Authors | SIL Open Font License 1.1 |
 | `crates/zgui-text-parley/tests/fonts/NotoSansArabic-Regular.ttf` | Noto Sans Arabic | The Noto Project Authors | SIL Open Font License 1.1 |
 | `crates/zgui-text-parley/tests/fonts/NotoZnamennyMusicalNotation-Regular.ttf` | Noto Znamenny Musical Notation | The Noto Project Authors | SIL Open Font License 1.1 |
+| `crates/zgui-text-parley/tests/fonts/RubikSubset-Variable.ttf` | Rubik (variable, subset to eight letters) | The Rubik Project Authors | SIL Open Font License 1.1 |

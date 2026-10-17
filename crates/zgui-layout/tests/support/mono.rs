@@ -163,11 +163,13 @@ impl ParagraphShaper for MonoShaper {
         visit(ShapedRun {
             face: zgui_text::FaceId(0),
             size: shaped.strut().font_size.0,
+            instance: zgui_text::VariationInstance::DEFAULT,
             synthetic_bold: 0.0,
             synthetic_slant: 0.0,
             has_color: false,
             brush: zgui_scene::PaintSlot(0),
             glyphs: &glyphs,
+            text_start: 0,
         });
     }
 
@@ -350,14 +352,23 @@ fn assemble(shaped: &ShapedParagraph<MonoLayout>, request: &BreakRequest<'_>) ->
             + indent;
 
         let baseline = CssPx(top.0 + ascent.0);
-        let mut x = offset;
+        // A box sits before the character at its offset, after every character and box before it.
+        let mut boxes_before = 0.0;
         for geometry in on_line {
+            let text_before: f32 = clusters[start..end]
+                .iter()
+                .filter(|cluster| cluster.offset < geometry.offset)
+                .map(|cluster| cluster.advance.0)
+                .sum();
             boxes.push(InlineBoxPlacement {
                 id: geometry.id,
-                origin: Point::new(CssPx(x), CssPx(baseline.0 - geometry.shaper_height().0)),
+                origin: Point::new(
+                    CssPx(offset + text_before + boxes_before),
+                    CssPx(baseline.0 - geometry.shaper_height().0),
+                ),
                 line: index,
             });
-            x += geometry.width.0;
+            boxes_before += geometry.width.0;
         }
 
         widest = widest.max(width + indent + band.map_or(0.0, |band| band.offset.0));

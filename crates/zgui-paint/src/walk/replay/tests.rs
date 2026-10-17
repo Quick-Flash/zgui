@@ -53,6 +53,7 @@ fn painted(style: u32) -> crate::walk::replay::Painted {
         subpixel: true,
         corners: 0,
         highlights: 0,
+        inline: 0,
     }
 }
 

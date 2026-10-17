@@ -9,7 +9,7 @@ use cephal::compute::block::BlockContext;
 use cephal::schedule::Incremental;
 use cephal::tree::{
     AnswerSource, CacheAccess, ChildRequest, IdentSuffix, LayoutInput, LayoutOutput,
-    LayoutTree as EngineTree, NodeCache, NodeId, RunMode,
+    LayoutTree as EngineTree, NodeCache, NodeId, QueryMeta, RunMode,
 };
 use cephal::{Layout, Style};
 use zgui_profile::{Counter, counter};
@@ -77,6 +77,27 @@ impl<C: MeasureContent> EngineTree for LayoutTree<'_, C> {
         suffix: IdentSuffix,
     ) -> Option<cephal::style::Ident> {
         self.structure().suffixed_ident(base, suffix)
+    }
+
+    /// The engine's own derivation, read from the interned style, plus one fact the style lacks:
+    /// an inline formatting context whose atomic inlines size their block axis with a percentage
+    /// keeps the parent's block size in its question.
+    #[inline]
+    fn query_meta(&self, node: NodeId) -> QueryMeta {
+        let key = from_node_id(node);
+        let structure = self.structure();
+        let (style, mut dependency) = structure.engine_style_with_dependency(key);
+        let box_node = structure.node(key);
+        dependency.height |= box_node.atomic_percent_block;
+        QueryMeta {
+            hidden: style.generates_no_box(),
+            // `child_count == 0 && leaf_is_cheap`, from the one record.
+            cheap_leaf: matches!(
+                box_node.fc,
+                FormattingContext::Block | FormattingContext::Flex | FormattingContext::Grid
+            ) && box_node.children.is_empty(),
+            dependency,
+        }
     }
 
     fn leaf_is_cheap(&self, node: NodeId) -> bool {

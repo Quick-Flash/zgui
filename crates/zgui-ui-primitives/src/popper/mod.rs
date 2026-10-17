@@ -6,7 +6,7 @@ mod solve;
 
 use zgui::geom::{DevicePx, Point};
 use zgui::prelude::*;
-use zgui::reactive::{LocalStorage, RenderEffect, RwSignal};
+use zgui::reactive::{LocalStorage, Memo, RenderEffect, RwSignal};
 use zgui::{component, view};
 
 pub use crate::popper::placement::{Align, Placement, Side};
@@ -58,6 +58,14 @@ pub use crate::popper::solve::{PopperOptions, Solution, WindowRect, anchor_point
 ///
 /// ```text
 /// .select__list { width: var(--zui-popper-anchor-width); }
+/// ```
+///
+/// `--zui-popper-available-width` and `--zui-popper-available-height` carry the largest size the
+/// surface can have and stay inside the window, in whole CSS pixels. A surface that can scroll caps
+/// itself with them, and solving again from the capped size moves nothing:
+///
+/// ```text
+/// .menu { max-height: var(--zui-popper-available-height); overflow-y: auto; }
 /// ```
 ///
 /// `--zui-popper-anchor-x` and `--zui-popper-anchor-y` carry the centre of the anchor, measured
@@ -171,7 +179,8 @@ pub fn Popper(
     let viewport =
         Signal::derive_local(move || window_box.get().and_then(|observed| observed.get()));
 
-    let solution = Signal::derive_local(move || {
+    // A memo, so the seven readers below share one solve per change rather than one each.
+    let solution = Memo::new(move |_| {
         // A surface that is not showing has no placement, and asking for one would be asking for
         // the measurements it has deliberately stopped watching.
         if !active.get() {
@@ -252,6 +261,16 @@ pub fn Popper(
             density.css(point.y.0.round()),
         ))
     });
+    // The room left in the window, rounded down to a whole CSS pixel so that a surface capped to it
+    // is never a fraction of a pixel too tall to fit.
+    let available = move |of: fn(&Solution) -> f32| {
+        let density = Density::reported(positioner.scale());
+        solution
+            .get()
+            .map(|solved| px(density.css(of(&solved)).floor()))
+    };
+    let available_width = move || available(|solved| solved.available.width.0);
+    let available_height = move || available(|solved| solved.available.height.0);
     let anchor_x = move || anchor_center.get().map(|(x, _)| px(x));
     let anchor_y = move || anchor_center.get().map(|(_, y)| px(y));
     let side = move || {
@@ -274,6 +293,8 @@ pub fn Popper(
             style:top = top,
             style:visibility = visibility,
             style:--zui-popper-anchor-width = anchor_width,
+            style:--zui-popper-available-width = available_width,
+            style:--zui-popper-available-height = available_height,
             style:--zui-popper-anchor-x = anchor_x,
             style:--zui-popper-anchor-y = anchor_y,
             attr:data-side = side,

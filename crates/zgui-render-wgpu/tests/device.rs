@@ -6,7 +6,7 @@ use zgui_bits::DamageSet;
 use zgui_geom::{Scale, Size};
 use zgui_render::{RenderTarget, Renderer};
 use zgui_render_wgpu::wgpu;
-use zgui_render_wgpu::{Acquisition, Builder, SrgbTier};
+use zgui_render_wgpu::{Acquisition, Builder, GroupPool, SrgbTier};
 use zgui_scene::{BackdropFilter, Filter, GroupBoundary, Quad, Scene};
 
 use support::{SIDE, device_lock, opaque, plain_renderer, present, rect};
@@ -409,7 +409,8 @@ fn two_hundred_frames_of_nested_groups_and_backdrops_hold_the_same_device_memory
     for step in 0..5 {
         renderer.draw(&scene(step), &DamageSet::full());
     }
-    let settled = renderer.memory().total();
+    let held = |memory: zgui_render::MemoryReport| memory.targets + memory.atlases + memory.scratch;
+    let settled = held(renderer.memory());
     assert!(
         renderer.groups().peak() >= 4,
         "four levels were open at once, and the pool lent {}",
@@ -418,13 +419,61 @@ fn two_hundred_frames_of_nested_groups_and_backdrops_hold_the_same_device_memory
     for step in 5..200 {
         renderer.draw(&scene(step), &DamageSet::full());
     }
-    // The bound is one-sided because a leak shows as growth. Memory can also shrink: the upload
-    // belt sheds a transient high-water staging chunk after a quiet period, and whether the early
-    // frames raised that mark depends on the driver's completion timing.
+    // The bound is one-sided because a leak shows as growth. The buffers are left out: the upload
+    // belt keeps staging chunks up to a high-water mark that rises and falls with the driver's
+    // completion timing, so in an optimised build it can sit above its early value without any
+    // leak.
     assert!(
-        renderer.memory().total() <= settled,
+        held(renderer.memory()) <= settled,
         "a hundred and ninety-five more frames allocated nothing: {} <= {settled}",
-        renderer.memory().total()
+        held(renderer.memory())
     );
     assert_eq!(renderer.groups().lent(), 0, "and every lease came back");
+}
+
+#[test]
+fn sibling_backdrops_return_their_captures_before_the_next_one_is_taken() {
+    // A backdrop copies what is beneath it and filters the copy. Each copy is a full-surface target,
+    // so a copy held to the end of the frame makes the pool grow with the number of backdrops. At
+    // the budget the pool then degrades every later target to half resolution.
+    let Some(mut renderer) = plain_renderer() else {
+        return;
+    };
+    let allocated = GroupPool::new(Size::new(SIDE, SIDE), 0)
+        .allocated_extent(zgui_render_wgpu::TargetScale::Full);
+    let one_full = u64::from(GroupPool::FORMAT.block_copy_size(None).unwrap_or(8))
+        * allocated.width as u64
+        * allocated.height as u64;
+    renderer.set_group_budget(4 * one_full);
+
+    let mut scene = Scene::new();
+    scene.begin_frame(Size::new(SIDE, SIDE));
+    let white = scene
+        .paints
+        .add(zgui_scene::Paint::Solid(opaque(255, 255, 255)));
+    scene.push_quad(Quad::filled(
+        rect(0.0, 0.0, SIDE as f32, SIDE as f32),
+        white,
+    ));
+    for index in 0..12 {
+        let (column, row) = ((index % 4) as f32, (index / 4) as f32);
+        scene.push_backdrop(BackdropFilter::new(
+            rect(4.0 + column * 30.0, 4.0 + row * 40.0, 24.0, 24.0),
+            [Filter::Blur(2.0)].into_iter().collect(),
+        ));
+    }
+    scene.finish(&DamageSet::full());
+    present(&mut renderer, &scene);
+
+    assert!(
+        renderer.groups().peak() <= 3,
+        "a copy and the two blur targets are all one backdrop needs at once, and the pool lent {}",
+        renderer.groups().peak()
+    );
+    assert_eq!(
+        renderer.groups().degraded(),
+        0,
+        "and no lease was reduced to half resolution"
+    );
+    assert_eq!(renderer.groups().lent(), 0);
 }

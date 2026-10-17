@@ -79,12 +79,15 @@ style! { pub ButtonStyle =>
 //
 // It applies only at the sizes that hold a word beside the mark. The `icon` sizes are square
 // and have no padding to pull out of.
+//
+// A bare string is no element, so a mark before one is the first and also the last child. Such a
+// mark is a leading mark, and the end rules skip it.
 ":scope[data-size=\"md\"] > .zui-icon:first-child,
      :scope[data-size=\"md\"] > .zui-spinner:first-child {
         margin-inline-start: calc(var(--zui-space-base) * -1);
     }"
-":scope[data-size=\"md\"] > .zui-icon:last-child,
-     :scope[data-size=\"md\"] > .zui-spinner:last-child {
+":scope[data-size=\"md\"] > .zui-icon:last-child:not(:first-child),
+     :scope[data-size=\"md\"] > .zui-spinner:last-child:not(:first-child) {
         margin-inline-end: calc(var(--zui-space-base) * -1);
     }"
 ":scope[data-size=\"xs\"] > .zui-icon:first-child,
@@ -93,18 +96,18 @@ style! { pub ButtonStyle =>
      :scope[data-size=\"sm\"] > .zui-spinner:first-child {
         margin-inline-start: calc(var(--zui-space-base) * -0.5);
     }"
-":scope[data-size=\"xs\"] > .zui-icon:last-child,
-     :scope[data-size=\"xs\"] > .zui-spinner:last-child,
-     :scope[data-size=\"sm\"] > .zui-icon:last-child,
-     :scope[data-size=\"sm\"] > .zui-spinner:last-child {
+":scope[data-size=\"xs\"] > .zui-icon:last-child:not(:first-child),
+     :scope[data-size=\"xs\"] > .zui-spinner:last-child:not(:first-child),
+     :scope[data-size=\"sm\"] > .zui-icon:last-child:not(:first-child),
+     :scope[data-size=\"sm\"] > .zui-spinner:last-child:not(:first-child) {
         margin-inline-end: calc(var(--zui-space-base) * -0.5);
     }"
 ":scope[data-size=\"lg\"] > .zui-icon:first-child,
      :scope[data-size=\"lg\"] > .zui-spinner:first-child {
         margin-inline-start: calc(var(--zui-space-base) * -2);
     }"
-":scope[data-size=\"lg\"] > .zui-icon:last-child,
-     :scope[data-size=\"lg\"] > .zui-spinner:last-child {
+":scope[data-size=\"lg\"] > .zui-icon:last-child:not(:first-child),
+     :scope[data-size=\"lg\"] > .zui-spinner:last-child:not(:first-child) {
         margin-inline-end: calc(var(--zui-space-base) * -2);
     }"
 

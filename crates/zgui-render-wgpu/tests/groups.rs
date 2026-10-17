@@ -462,3 +462,47 @@ fn a_half_resolution_group_ending_on_an_odd_pixel_keeps_its_last_row_and_column(
         "the last column and row of a black group are mostly black: {column} and {row}"
     );
 }
+
+#[test]
+fn a_pool_at_its_budget_frees_a_target_no_lease_of_this_frame_used_before_it_degrades() {
+    // A target of another format or resolution is never reused for a lease, so without this it
+    // stays resident and pushes every later lease of every later frame to half resolution.
+    let Some(renderer) = plain_renderer() else {
+        return;
+    };
+    let gpu = std::sync::Arc::clone(renderer.gpu());
+    let region = Size::new(SIDE, SIDE);
+    let allocated = GroupPool::new(region, 0).allocated_extent(TargetScale::Full);
+    let one_full = u64::from(GroupPool::FORMAT.block_copy_size(None).unwrap_or(8))
+        * allocated.width as u64
+        * allocated.height as u64;
+    let mut pool = GroupPool::new(region, one_full);
+    let other = wgpu::TextureFormat::Bgra8Unorm;
+
+    let copy = pool
+        .acquire(&gpu, TargetScale::Full, other)
+        .expect("one copy target fits");
+    pool.release(copy);
+    let degraded = pool
+        .acquire(&gpu, TargetScale::Full, GroupPool::FORMAT)
+        .expect("a half-resolution target fits next to it");
+    assert_eq!(
+        degraded.scale(),
+        TargetScale::Half,
+        "this frame lent the copy target, and its plan still names it, so it stays resident"
+    );
+    assert_eq!(pool.degraded(), 1);
+
+    pool.release_all();
+    let full = pool
+        .acquire(&gpu, TargetScale::Full, GroupPool::FORMAT)
+        .expect("a full-resolution target fits once the idle ones are freed");
+    assert_eq!(full.scale(), TargetScale::Full);
+    assert_eq!(pool.degraded(), 1, "and this lease was not reduced");
+    assert!(pool.bytes() <= pool.budget());
+    assert_eq!(full.format(), GroupPool::FORMAT);
+    assert!(
+        pool.acquire_exact(&gpu, TargetScale::Full, other).is_none(),
+        "an exact lease never degrades, and this frame lent every other target"
+    );
+}

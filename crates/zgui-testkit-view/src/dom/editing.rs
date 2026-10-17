@@ -34,6 +34,9 @@ const EDITABLE: [&str; 2] = ["editor", "field"];
 /// unsendable from the keyboard.
 const TAKES_LINE_BREAKS: &str = "editor";
 
+/// The one editable element whose value can be a secret.
+const TAKES_SECRETS: &str = "field";
+
 /// One element's editing model, and the text nodes it writes through.
 struct Attached {
     /// The model.
@@ -85,6 +88,27 @@ impl RecordingDom {
         self.tree()
             .element_name(node)
             .is_some_and(|name| EDITABLE.contains(&name.as_str()))
+    }
+
+    /// Whether `node` is a field that declares its value a secret.
+    ///
+    /// A secure field's text nodes hold one bullet per grapheme, as a window's do.
+    pub fn is_secure(&self, node: NodeId) -> bool {
+        self.tree().element_name(node).as_deref() == Some(TAKES_SECRETS)
+            && self
+                .tree()
+                .attribute(node, zgui_view::AttrName::new("secure"))
+                .is_some()
+    }
+
+    /// Masks or unmasks `node`'s text after its `secure` attribute changed.
+    ///
+    /// A plain field with no model stays without one.
+    pub(crate) fn secure_changed(&self, node: NodeId) {
+        let attached = self.editing().attached.borrow().contains_key(&node);
+        if self.holds_text(node) && (attached || self.is_secure(node)) {
+            self.with_model(node, |_| ());
+        }
     }
 
     /// Where `node`'s own model has its caret, or nothing when nothing has reached it yet.
@@ -173,8 +197,21 @@ impl RecordingDom {
             Some(held) => held,
             None => Attached::adopt(self, node),
         };
+        let secure = self.is_secure(node);
+        held.editor.set_secure(secure);
         let answer = act(&mut held.editor);
-        let paragraphs: Vec<String> = held.editor.paragraphs().to_vec();
+        let paragraphs: Vec<String> = held
+            .editor
+            .paragraphs()
+            .iter()
+            .map(|paragraph| {
+                if secure {
+                    zgui_edit::document::mask::masked(paragraph)
+                } else {
+                    paragraph.clone()
+                }
+            })
+            .collect();
         held.nodes = self.project(node, core::mem::take(&mut held.nodes), &paragraphs);
         editing.attached.borrow_mut().insert(node, held);
         answer

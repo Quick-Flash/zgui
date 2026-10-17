@@ -162,3 +162,116 @@ fn unlocking_gives_the_gutter_back() {
     lay_out(&mut store, &mut content, 400.0, 300.0);
     assert_eq!(fragment_rects(&store), scrolling_width);
 }
+
+#[test]
+fn a_padded_bordered_scroller_puts_its_bar_against_the_border() {
+    let rows: Vec<Element> = (0..30)
+        .map(|_| Element::new("row").text("alpha bravo delta"))
+        .collect();
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("column").children(rows)]),
+        "root { display: block }
+         column { display: block; height: 200px; overflow-y: auto; padding: 0 16px;
+                  border: 1px solid red }
+         row { display: block }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 400.0, 300.0);
+
+    let column = fixture
+        .document
+        .store()
+        .core(fixture.root)
+        .first_child()
+        .expect("the scroller");
+    let list = store.boxes_of(fixture.document.store().key_of(column))[0];
+    let frags = store.fragments_of_box(list).to_vec();
+    let fragment = |kind| {
+        frags
+            .iter()
+            .filter_map(|frag| store.fragment(*frag))
+            .find(|fragment| fragment.kind == kind)
+            .cloned()
+            .expect("the fragment")
+    };
+    let own = fragment(zgui_layout::FragmentKind::Box);
+    let part = |part| {
+        fragment(zgui_layout::FragmentKind::Scrollbar {
+            axis: zgui_layout::Axis::Vertical,
+            part,
+        })
+        .border_box
+    };
+    let track = part(zgui_layout::fragment::ScrollbarPart::Track);
+    let thumb = part(zgui_layout::fragment::ScrollbarPart::Thumb);
+
+    assert_eq!(
+        track.right().0,
+        own.border_box.right().0 - 1.0,
+        "the track touches the border"
+    );
+    assert_eq!(track.top(), own.padding_box.top());
+    assert_eq!(track.bottom(), own.padding_box.bottom());
+    assert!(
+        (track.left().0 - (own.content_box.right().0 + 16.0)).abs() < 1e-3,
+        "the right padding stays between the content and the bar"
+    );
+    assert_eq!(thumb.left(), track.left());
+    assert_eq!(thumb.top(), track.top());
+}
+
+#[test]
+fn a_box_is_found_in_its_scrollers_content_space_from_layout_alone() {
+    let rows: Vec<Element> = (0..30)
+        .map(|_| Element::new("row").classes(&["r"]))
+        .collect();
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![
+            Element::new("column").children(vec![Element::new("box").children(rows)]),
+        ]),
+        "root { display: block }
+         column { display: block; height: 200px; overflow-y: auto; padding: 10px;
+                  border: 2px solid red }
+         box { display: block; margin-top: 7px }
+         row { display: block; height: 20px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 400.0, 300.0);
+
+    let document = fixture.document.store();
+    let column = document
+        .core(fixture.root)
+        .first_child()
+        .expect("the scroller");
+    let inner = document.core(column).first_child().expect("the wrapper");
+    let mut row = document.core(inner).first_child().expect("a row");
+    for _ in 0..5 {
+        row = document.core(row).next_sibling().expect("a later row");
+    }
+    let container = store.boxes_of(document.key_of(column))[0];
+    let target = store.boxes_of(document.key_of(row))[0];
+
+    let (rect, port) = zgui_layout::scroll_region::into_view::target_in(&store, container, target)
+        .expect("the row is below the scroller");
+    assert_eq!(
+        rect.origin.y.0,
+        7.0 + 5.0 * 20.0,
+        "the wrapper's margin and five rows"
+    );
+    assert_eq!(
+        rect.origin.x.0, 0.0,
+        "measured from the content box, inside the padding"
+    );
+    assert_eq!(rect.size.height.0, 20.0);
+    assert_eq!(
+        port.height.0,
+        200.0 - 2.0 * 10.0 - 2.0 * 2.0,
+        "the scrollport is the content box of a border-box sized scroller"
+    );
+    assert!(
+        zgui_layout::scroll_region::into_view::target_in(&store, target, container).is_none(),
+        "the scroller is not below the row"
+    );
+}

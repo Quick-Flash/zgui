@@ -160,6 +160,12 @@ pub struct Painted {
     /// frozen in whichever phase it was first encoded in — which looks exactly like no caret at
     /// all half the time, and like one that never blinks the other half.
     pub highlights: u64,
+    /// A fingerprint of the styles of the nested inline boxes a line paints, and zero for any
+    /// other fragment.
+    ///
+    /// Those boxes are below the line's own box, so nothing else here moves when one of them is
+    /// restyled. Without it, a chip that changes colour replays its old colour.
+    pub inline: u64,
 }
 
 /// What one fragment painted last time it was painted.

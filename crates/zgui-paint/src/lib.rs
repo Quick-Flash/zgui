@@ -86,4 +86,6 @@ pub use zgui_scene::{ColorSprite, MonoSprite, PaintSlot, SubpixelSprite};
 /// Re-exported because a caller that shapes its own runs and draws them through
 /// [`GlyphPlacementSource`] names these types in both halves, and should not have to reach past
 /// this crate for the spelling.
-pub use zgui_text::{Brush, FaceId, RasterStyle, ShapedGlyph, ShapedRun, ShapedRunOwned};
+pub use zgui_text::{
+    Brush, FaceId, RasterStyle, ShapedGlyph, ShapedRun, ShapedRunOwned, VariationInstance,
+};

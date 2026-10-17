@@ -29,6 +29,8 @@ pub(crate) struct BoxLayout {
     /// See [`ProbeMemo`](crate::inline::measure::ProbeMemo). Dropped with the cache: a box marked
     /// dirty may have new content, and the memo is only ever trusted within one pass anyway.
     pub(crate) probe_memo: Option<Box<crate::inline::measure::ProbeMemo>>,
+    /// Whether a size probe over this box's lines is on [`LayoutStore::probed`].
+    pub(crate) probed: bool,
     /// What the engine recorded about this box's absolutely positioned children, so that one of
     /// them can be placed again without the box running its own algorithm.
     pub(crate) absolute: Option<Box<cephal::tree::AbsoluteContext>>,
@@ -229,6 +231,12 @@ impl LayoutStore {
     /// One box's layout-time state.
     pub(crate) fn state(&self, key: BoxKey) -> Option<&BoxLayout> {
         self.layout.get(key)?.as_ref()
+    }
+
+    /// One box's layout-time state, for modification, if the box has any.
+    pub(crate) fn state_opt_mut(&mut self, key: BoxKey) -> Option<&mut BoxLayout> {
+        self.layout.get(key)?.as_ref()?;
+        self.layout.get_mut(key).as_mut()
     }
 
     /// One box's layout-time state, for modification.

@@ -37,3 +37,9 @@ appended. The state now outlives the query:
 shared clone's changes; a query that finds the state built against another generation clears it.
 `crates/zgui-text-parley/tests/fonts.rs`
 (`a_face_unregistered_after_shaping_is_not_drawn_with_again`) pins the invalidation.
+
+### Script samples (`script.rs`)
+
+The sample table builds each `Script` with `Script::from_bytes`. Upstream calls
+`from_str_unchecked`, which parlance 0.1.1 deprecates, and every build that compiles this copy as a
+path dependency printed 161 warnings.

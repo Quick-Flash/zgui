@@ -57,7 +57,7 @@ pub fn plan_segments(
         .backdrops
         .iter()
         .filter(|backdrop| !backdrop.reads_only_what_it_writes())
-        .map(|backdrop| rounded_out(backdrop.source))
+        .map(|backdrop| rounded_out(on_device(scene, backdrop).1))
         .collect();
 
     plan_mark_pages(&mut builder, scene, marks);
@@ -216,7 +216,7 @@ fn plan_rect(
                     continue;
                 };
                 if boundary.is_start {
-                    match begin_group(builder, boundary, current, used) {
+                    match begin_group(builder, scene, boundary, current, used) {
                         Some(group) => {
                             scissor = group.region;
                             current = group.target;
@@ -247,7 +247,7 @@ fn plan_rect(
                 let Some(backdrop) = scene.primitives.backdrops.get(index) else {
                     continue;
                 };
-                plan_backdrop(builder, backdrop, current, scissor, used);
+                plan_backdrop(builder, scene, backdrop, current, scissor, used);
                 builder.begin_pass(current, scissor);
             }
             Batch::External(index) => {
@@ -310,6 +310,7 @@ fn plan_rect(
 /// Lends a group its target and works out the region its content may touch.
 fn begin_group(
     builder: &mut PlanBuilder<'_>,
+    scene: &Scene,
     boundary: &GroupBoundary,
     parent: TargetRef,
     used: Rect<i32, Device>,
@@ -317,7 +318,15 @@ fn begin_group(
     // The content is drawn over everything the group *reads*, not only over what it writes. A blur
     // samples outside the element's box, and a target populated only where the composite lands
     // would fade to an edge that is an artefact of the damage rectangle rather than of the filter.
-    let region = enclosing(boundary.source, used)?;
+    // The rectangle is in the coordinates of the group's own system, which a place write can have
+    // moved since the group was emitted, so it goes on the device through the current matrix.
+    let source = boundary
+        .transform
+        .and_then(|space| scene.spatial.resolve(space))
+        .map_or(boundary.source, |matrix| {
+            zgui_geom::transformed_bounds(&matrix, boundary.source)
+        });
+    let region = enclosing(source, used)?;
     let target = TargetRef::Pool(builder.acquire(TargetScale::Full)?);
     Some(OpenGroup {
         target,
@@ -385,38 +394,54 @@ fn end_group(builder: &mut PlanBuilder<'_>, group: &OpenGroup, scissor: Rect<i32
 /// Captures what lies beneath a backdrop, filters it, and draws the result.
 fn plan_backdrop(
     builder: &mut PlanBuilder<'_>,
+    scene: &Scene,
     backdrop: &BackdropFilter,
     beneath: TargetRef,
     scissor: Rect<i32, Device>,
     used: Rect<i32, Device>,
 ) {
+    let (written, read) = on_device(scene, backdrop);
     // The batch stream is replayed once per damage rectangle, so a rectangle nowhere near this
     // backdrop still reaches here. It writes nothing inside such a rectangle, and capturing what
     // it would have read is both wasted and impossible — the read lies outside what this pass is
     // allowed to write.
-    if clamped(backdrop.bounds, scissor, used).is_empty() {
+    if clamped(written, scissor, used).is_empty() {
         return;
     }
-    let Some(source) = enclosing(backdrop.source, used) else {
+    let Some(source) = enclosing(read, used) else {
         return;
     };
     // What a backdrop reads has to be inside what this frame has already written into the target
     // beneath it, or it samples the previous frame's composite — which already contains this
     // filter's own output, and the panel smears a little further every frame. A filter with no
     // reach is exempt and safe: it reads only the pixel it writes, which the scissor already
-    // covers.
+    // covers. A group's target holds no earlier frame: its first pass clears all of it, so a read
+    // past the group's region reads transparent, which is what lies outside a backdrop root.
     debug_assert!(
-        backdrop.reads_only_what_it_writes() || scissor.contains_rect(source),
+        beneath != TargetRef::Composed
+            || backdrop.reads_only_what_it_writes()
+            || scissor.contains_rect(source),
         "a backdrop reads {source:?}, which the region {scissor:?} being written does not contain"
     );
+    // A group nothing has been drawn into yet was never cleared, and holds what its last lease left
+    // there. What is beneath the backdrop is then transparent, and so is any filter of it.
+    if let Some(slot) = beneath.slot() {
+        builder.end_pass();
+        if builder.is_unwritten(slot) {
+            builder.begin_pass(beneath, scissor);
+            return;
+        }
+    }
     let chain = Chain::of(&backdrop.filters);
-    let Some(filtered) = crate::filter::backdrop::plan(builder, beneath, &chain, source) else {
+    let Some((filtered, captured)) =
+        crate::filter::backdrop::plan(builder, beneath, &chain, source)
+    else {
         builder.note_unisolated();
         return;
     };
     // A backdrop composites only over what it writes, which is what gives a frosted panel the
     // defined shape its clip describes rather than a soft fade past its own edge.
-    let bounds = clamped(backdrop.bounds, scissor, used);
+    let bounds = clamped(written, scissor, used);
     composite(
         builder,
         &filtered,
@@ -434,6 +459,41 @@ fn plan_backdrop(
     {
         builder.release(slot);
     }
+    // The copy is the chain's input, which the chain keeps. Holding it to the end of the frame
+    // holds one full-surface target per backdrop, and every damage rectangle replays the backdrop.
+    if let Some(slot) = captured.slot()
+        && captured != filtered.target
+        && !filtered
+            .shadows
+            .iter()
+            .any(|shadow| shadow.source == captured)
+    {
+        builder.release(slot);
+    }
+}
+
+/// What a backdrop writes and what it reads, on the device.
+///
+/// The backdrop is measured in its coordinate system, which a place write can have moved since the
+/// backdrop was emitted, so the rectangles go on the device through the current matrix. The read
+/// extent is then taken on the device, where the filter runs.
+fn on_device(
+    scene: &Scene,
+    backdrop: &BackdropFilter,
+) -> (Rect<DevicePx, Device>, Rect<DevicePx, Device>) {
+    let Some(matrix) = backdrop
+        .transform
+        .and_then(|space| scene.spatial.resolve(space))
+    else {
+        return (backdrop.bounds, backdrop.source);
+    };
+    let written = zgui_geom::transformed_bounds(&matrix, backdrop.bounds);
+    let read = if backdrop.reads_only_what_it_writes() {
+        written
+    } else {
+        zgui_scene::read_extent(written, &backdrop.filters)
+    };
+    (written, read)
 }
 
 /// Draws a filtered result, and any shadow behind it, into `destination`.

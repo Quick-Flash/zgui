@@ -416,11 +416,13 @@ mod tests {
         ShapedRun {
             face: FaceId(1),
             size: 16.0,
+            instance: zgui_text::VariationInstance::DEFAULT,
             synthetic_bold: 0.0,
             synthetic_slant: 0.0,
             has_color,
             brush: zgui_scene::PaintSlot(3),
             glyphs: &GLYPHS,
+            text_start: 0,
         }
     }
 

@@ -18,6 +18,8 @@ pub use style::values::computed::Color as ColorValue;
 pub use style::values::computed::ColorScheme as ColorSchemeValue;
 /// The computed value of `color` itself.
 pub use style::values::computed::color::ColorPropertyValue;
+/// The keywords a `color-scheme` value names: `light`, `dark` and `only`.
+pub use style::values::specified::color::ColorSchemeFlags;
 
 /// Converts a cascaded colour into this framework's own.
 ///

@@ -194,7 +194,7 @@ impl WgpuRenderer {
             pipelines.borrow().layouts().sampled.clone(),
         );
         let buffers = FrameBuffers::new(&gpu);
-        let groups = GroupPool::new(target.size, GroupPool::BUDGET);
+        let groups = GroupPool::scaled(target.size);
         let sampler = gpu.device().create_sampler(&wgpu::SamplerDescriptor {
             label: Some("zgui.sampler.filtering"),
             // Clamping is what a magnifying read wants at the edge of a target; everything a
@@ -460,7 +460,9 @@ impl WgpuRenderer {
     /// How many bytes of isolated targets may be resident before the pool reduces resolution.
     ///
     /// Setting it discards every target the pool holds, because a budget that is now too small has
-    /// to be met by giving something back rather than by refusing the next lease alone.
+    /// to be met by giving something back rather than by refusing the next lease alone. A budget
+    /// set here stays when the surface is resized; the default follows the surface
+    /// ([`GroupPool::scaled`]).
     pub fn set_group_budget(&mut self, bytes: u64) {
         self.groups = GroupPool::new(self.composed.used().size, bytes);
     }

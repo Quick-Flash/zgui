@@ -253,3 +253,48 @@ fn a_ring_antialiases_its_inner_edge_beside_the_straight_band() {
         "the pixel across the inner edge holds {alpha} of 255"
     );
 }
+
+/// A border with one colour per side draws each side in its own colour, and the sides meet on the
+/// diagonal from the outer corner to the inner one.
+#[test]
+fn each_border_side_is_drawn_in_its_own_colour() {
+    let Some(mut renderer) = plain_renderer() else {
+        return;
+    };
+    let mut scene = scene();
+    let grey = opaque(128, 128, 128);
+    let red = opaque(255, 0, 0);
+    let stroke = scene
+        .paints
+        .add(zgui_scene::Paint::Sides([grey, grey, grey, red]));
+    // Left 8, other sides 4: the join at the top left runs from (10, 10) to (18, 14).
+    scene.push_quad(
+        Quad::filled(rect(10.0, 10.0, 60.0, 40.0), zgui_scene::PaintRef::NONE).with_border(
+            [4.0, 4.0, 4.0, 8.0],
+            stroke,
+            zgui_scene::prim::quad::BorderStyle::Solid,
+        ),
+    );
+    scene.finish(&DamageSet::full());
+    let pixels = present(&mut renderer, &scene);
+
+    let rgb = |x, y| {
+        let [r, g, b, _] = pixels.rgba(x, y);
+        [r, g, b]
+    };
+    assert_eq!(rgb(12, 30), [255, 0, 0], "the left side is red");
+    assert_eq!(rgb(40, 11), [128, 128, 128], "the top side is grey");
+    assert_eq!(rgb(68, 30), [128, 128, 128], "the right side is grey");
+    assert_eq!(rgb(40, 48), [128, 128, 128], "the bottom side is grey");
+    // Inside the corner square, on either side of the diagonal.
+    assert_eq!(
+        rgb(11, 13),
+        [255, 0, 0],
+        "below the diagonal belongs to the left side"
+    );
+    assert_eq!(
+        rgb(16, 11),
+        [128, 128, 128],
+        "above it belongs to the top side"
+    );
+}

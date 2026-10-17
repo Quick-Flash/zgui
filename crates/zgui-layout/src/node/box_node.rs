@@ -59,6 +59,13 @@ pub struct BoxNode {
     pub text: Option<Box<str>>,
     /// What this box's own fragment paints. Rare payloads live in sparse store columns.
     pub painted: PaintedContent,
+    /// On a box of an inline formatting context: whether an atomic inline in its content sizes
+    /// its block axis with a percentage.
+    ///
+    /// Such a percentage resolves against the block size of the context root's containing block,
+    /// so the root keeps that size in its layout question. The box tree keeps it current when it
+    /// builds and patches boxes.
+    pub atomic_percent_block: bool,
 }
 
 impl BoxNode {
@@ -77,6 +84,7 @@ impl BoxNode {
             block_level: false,
             text: None,
             painted: PaintedContent::Box,
+            atomic_percent_block: false,
         }
     }
 
@@ -104,5 +112,17 @@ impl BoxNode {
     /// Whether this box has no children in either order.
     pub fn is_leaf(&self) -> bool {
         self.children.is_empty() && self.paint_children.is_empty()
+    }
+
+    /// Whether this is a nested inline box: a box inside an inline formatting context that is
+    /// not an atomic inline.
+    ///
+    /// Such a box has no rectangle of its own size. The lines it is on paint its parts.
+    pub fn is_nested_inline(&self) -> bool {
+        self.parent_fc == FormattingContext::Inline
+            && !matches!(
+                self.fc,
+                FormattingContext::Atomic | FormattingContext::Replaced | FormattingContext::Custom
+            )
     }
 }

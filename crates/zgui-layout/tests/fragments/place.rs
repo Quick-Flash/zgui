@@ -214,6 +214,135 @@ fn a_positive_z_index_paints_after_a_later_sibling() {
     );
 }
 
+/// The paint order of the named boxes, as the positions each holds in the document's paint order.
+fn painted(store: &zgui_layout::LayoutStore, fixture: &Fixture, names: &[&str]) -> Vec<usize> {
+    let root = store.root().expect("a root");
+    let order = zgui_layout::fragment::stacking::paint_order(store, root);
+    names
+        .iter()
+        .map(|name| {
+            let key = box_named(store, fixture, name);
+            order.iter().position(|held| *held == key).expect("painted")
+        })
+        .collect()
+}
+
+/// Whether `values` is strictly increasing.
+fn increasing(values: &[usize]) -> bool {
+    values.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+#[test]
+fn an_absolute_box_paints_before_a_later_positioned_sibling() {
+    // Both positioned with `z-index: auto`, so tree order decides. The absolute box is appended to
+    // its containing block's layout list, and must still paint first.
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![
+            Element::new("a").children(vec![Element::new("r"), Element::new("c")]),
+        ]),
+        "root { display: block; width: 200px }
+         a { display: block; position: relative; height: 20px }
+         r { display: block; position: absolute; top: 50%; left: 0; right: 0; height: 4px }
+         c { display: block; position: relative; width: 50px; margin: 0 auto; height: 20px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 200.0, 200.0);
+    assert!(increasing(&painted(&store, &fixture, &["r", "c"])));
+}
+
+#[test]
+fn an_absolute_box_in_a_static_wrapper_paints_before_a_later_positioned_sibling() {
+    // Written inside a static box, positioned by the box around that one.
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("a").children(vec![
+            Element::new("before"),
+            Element::new("wrap").children(vec![Element::new("r")]),
+            Element::new("c"),
+        ])]),
+        "root { display: block; width: 200px }
+         a { display: block; position: relative; height: 60px }
+         before { display: block; position: relative; height: 10px }
+         wrap { display: block; height: 10px }
+         r { display: block; position: absolute; inset: 0 }
+         c { display: block; position: relative; height: 20px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 200.0, 200.0);
+    assert!(increasing(&painted(
+        &store,
+        &fixture,
+        &["before", "r", "c"]
+    )));
+}
+
+#[test]
+fn z_index_still_orders_an_absolute_box_before_tree_order() {
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("a").children(vec![
+            Element::new("low"),
+            Element::new("up"),
+            Element::new("c"),
+        ])]),
+        "root { display: block; width: 200px }
+         a { display: block; position: relative; height: 40px }
+         low { display: block; position: absolute; inset: 0; z-index: -1 }
+         up { display: block; position: absolute; inset: 0; z-index: 1 }
+         c { display: block; position: relative; height: 20px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 200.0, 200.0);
+    assert!(increasing(&painted(&store, &fixture, &["low", "c", "up"])));
+}
+
+#[test]
+fn several_absolute_boxes_keep_tree_order_among_positioned_siblings() {
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("a").children(vec![
+            Element::new("one"),
+            Element::new("two"),
+            Element::new("mid"),
+            Element::new("three"),
+            Element::new("last"),
+        ])]),
+        "root { display: block; width: 200px }
+         a { display: block; position: relative; height: 40px }
+         one, two, three { display: block; position: absolute; inset: 0 }
+         mid, last { display: block; position: relative; height: 10px }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 200.0, 200.0);
+    assert!(increasing(&painted(
+        &store,
+        &fixture,
+        &["one", "two", "mid", "three", "last"]
+    )));
+}
+
+#[test]
+fn flex_order_still_moves_painting_around_an_absolute_box() {
+    // `order` moves the in-flow items; the absolute box paints after the item written before it.
+    let fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("a").children(vec![
+            Element::new("x"),
+            Element::new("r"),
+            Element::new("y"),
+        ])]),
+        "root { display: block; width: 200px }
+         a { display: flex; position: relative; height: 40px }
+         x { display: block; position: relative; width: 20px; order: 2 }
+         y { display: block; position: relative; width: 20px; order: 1 }
+         r { display: block; position: absolute; inset: 0 }",
+    );
+    let mut store = fixture.box_tree();
+    let mut content = measurer();
+    lay_out(&mut store, &mut content, 200.0, 200.0);
+    assert!(increasing(&painted(&store, &fixture, &["y", "x", "r"])));
+}
+
 #[test]
 fn a_fixed_box_at_half_the_viewport_pulled_back_by_half_itself_is_centred() {
     // How every modal dialog is centred, and the only arrangement that centres one whose size is

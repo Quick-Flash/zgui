@@ -5,6 +5,7 @@
 //! | `place` | where a fragment ends up, and in what order it is painted |
 //! | `folds` | what an unwind folds up the tree |
 //! | `hits` | what answers at a point |
+//! | `inline_effects` | a line that paints the nested inline boxes on it |
 //! | `bounds` | where an element is, across every piece it was painted as |
 //! | `probe` | finding the box and the fragment a fixture element produced |
 //! | `spaces` | which coordinate system a fragment names |
@@ -18,6 +19,8 @@ mod bounds;
 mod folds;
 #[path = "fragments/hits.rs"]
 mod hits;
+#[path = "fragments/inline_effects.rs"]
+mod inline_effects;
 #[path = "fragments/place.rs"]
 mod place;
 #[path = "fragments/probe.rs"]

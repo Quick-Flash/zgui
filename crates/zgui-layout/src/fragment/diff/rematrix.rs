@@ -117,6 +117,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             if first.is_none() {
                 // A box with no piece of its own answers for what is below it.
                 folded.blending |= below.blending;
+                folded.reads |= below.reads;
                 folded.rigid &= below.rigid;
                 folded.order = (
                     folded.order.0.min(below.order.0),

@@ -37,7 +37,10 @@ use style::context::{
 };
 use style::data::RestyleKind;
 use style::dom::TNode;
+use style::properties::{ComputedValues, PropertyDeclarationBlock};
 use style::selector_parser::{PseudoElement, RestyleDamage};
+use style::shared_lock::Locked;
+use style::stylesheets::keyframes_rule::KeyframesStepValue;
 use style::traversal::{DomTraversal, PerLevelTraversalData};
 use zgui_css::MAX_STYLE_THREADS;
 use zgui_dom::{Node, NodeIndex, NodeKey};
@@ -81,12 +84,12 @@ impl RegisteredSpeculativePainters for NoPainters {
 }
 
 /// One vector per worker, so that appending to it contends with nothing.
-struct PerWorker {
+struct PerWorker<T> {
     /// The slots, one per worker index the engine can produce plus one for the calling thread.
-    slots: Vec<Mutex<Vec<Restyled>>>,
+    slots: Vec<Mutex<Vec<T>>>,
 }
 
-impl PerWorker {
+impl<T> PerWorker<T> {
     /// Empty slots.
     fn new() -> Self {
         Self {
@@ -97,7 +100,7 @@ impl PerWorker {
     }
 
     /// Appends `entry` to the calling worker's own slot.
-    fn push(&self, entry: Restyled) {
+    fn push(&self, entry: T) {
         let slot = rayon::current_thread_index().unwrap_or(MAX_STYLE_THREADS);
         self.slots[slot.min(MAX_STYLE_THREADS)]
             .lock()
@@ -106,7 +109,7 @@ impl PerWorker {
     }
 
     /// Every slot's entries, concatenated.
-    fn into_vec(self) -> Vec<Restyled> {
+    fn into_vec(self) -> Vec<T> {
         self.slots
             .into_iter()
             .flat_map(|slot| slot.into_inner().unwrap_or_else(|held| held.into_inner()))
@@ -119,7 +122,9 @@ pub(crate) struct RecalcStyle<'a> {
     /// The rule set, the guards and the snapshot map.
     context: SharedStyleContext<'a>,
     /// What each worker styled.
-    restyled: PerWorker,
+    restyled: PerWorker<Restyled>,
+    /// The elements whose keyframes were computed again because a custom property they read moved.
+    refreshed: PerWorker<NodeIndex>,
     /// One bit per worker index that ran at least one element.
     ///
     /// Evidence rather than trust: the traversal stays on one thread until a level is wide enough
@@ -146,7 +151,18 @@ pub(crate) struct RecalcStyle<'a> {
 pub(crate) struct RefsCache {
     /// The answers.
     held: Mutex<FxHashMap<u64, (StrongRuleNode, Arc<RuleRefs>)>>,
+    /// What each `@keyframes` rule reads, by name, with the declaration blocks the answer is for.
+    ///
+    /// The blocks are held and compared on every lookup, so a rule that a changed sheet set or
+    /// device replaced under the same name is scanned again.
+    keyframes: Mutex<FxHashMap<Atom, HeldKeyframes>>,
 }
+
+/// One declaration block of a `@keyframes` rule.
+type KeyframeBlock = servo_arc::Arc<Locked<PropertyDeclarationBlock>>;
+
+/// What one `@keyframes` rule reads, with the blocks the answer was computed from.
+type HeldKeyframes = (Vec<KeyframeBlock>, Arc<RuleRefs>);
 
 impl RefsCache {
     /// How many chains are held before the answers are given back.
@@ -158,6 +174,10 @@ impl RefsCache {
     /// Gives every answer back, which also lets the rule tree free the chains they held.
     pub(crate) fn clear(&self) {
         self.held
+            .lock()
+            .unwrap_or_else(|held| held.into_inner())
+            .clear();
+        self.keyframes
             .lock()
             .unwrap_or_else(|held| held.into_inner())
             .clear();
@@ -178,6 +198,7 @@ impl<'a> RecalcStyle<'a> {
         Self {
             context,
             restyled: PerWorker::new(),
+            refreshed: PerWorker::new(),
             workers: AtomicU32::new(0),
             custom_changes: Mutex::new(FxHashMap::default()),
             refs,
@@ -205,16 +226,33 @@ impl<'a> RecalcStyle<'a> {
 
     /// The custom properties the element's rule chains read, filed for the readers column.
     ///
-    /// The primary chain and every generated-content chain, and every name when the element
-    /// declares custom properties or holds an effect that reads them by any name. An element
-    /// with no rules reads nothing.
-    fn readers_of(&self, data: &ElementData) -> u64 {
+    /// The primary chain, every generated-content chain and the `@keyframes` rules the element's
+    /// animations name, and every name when the element declares custom properties or holds an
+    /// effect that reads them by any name. A custom element
+    /// also reads what its implementation reads in its own `layout`: the names it lists, or every
+    /// name. An element with no rules reads nothing.
+    fn readers_of(&self, element: Node<'_>, data: &ElementData) -> u64 {
+        // A custom element reads what its implementation says it reads, or every name.
+        let implementation = if element.is_custom_element() {
+            match zgui_dom::side::custom::reads(element.store(), element.key()) {
+                Some(reads) => zgui_dom::side::custom::reads_bloom(reads),
+                None => return zgui_dom::side::readers::ALL,
+            }
+        } else {
+            0
+        };
         let Some(primary) = data.styles.get_primary() else {
             return zgui_dom::side::readers::ALL;
         };
         if super::recalc::declares_any(primary, &self.wildcard_names) {
             return zgui_dom::side::readers::ALL;
         }
+        let keyframes = if primary.get_ui().specifies_animations() {
+            self.animation_reads(element, primary)
+                .fold(0, |bits, refs| bits | refs.bloom)
+        } else {
+            0
+        };
         let pseudos = data
             .styles
             .pseudos
@@ -224,7 +262,60 @@ impl<'a> RecalcStyle<'a> {
         core::iter::once(primary)
             .chain(pseudos)
             .filter_map(|style| style.rules.as_ref())
-            .fold(0, |bits, rules| bits | self.refs_of(rules).bloom)
+            .fold(implementation | keyframes, |bits, rules| {
+                bits | self.refs_of(rules).bloom
+            })
+    }
+
+    /// What the `@keyframes` rules of `style`'s animations read, one answer per rule found.
+    pub(super) fn animation_reads<'s>(
+        &'s self,
+        element: Node<'s>,
+        style: &'s ComputedValues,
+    ) -> impl Iterator<Item = Arc<RuleRefs>> + 's {
+        style
+            .get_ui()
+            .animation_name_iter()
+            .filter_map(|name| name.as_atom().cloned())
+            .filter_map(move |name| self.keyframe_refs_of(element, &name))
+    }
+
+    /// What the `@keyframes` rule `name` that applies to `element` reads, computed once per rule.
+    pub(super) fn keyframe_refs_of(&self, element: Node<'_>, name: &Atom) -> Option<Arc<RuleRefs>> {
+        let animation = self.context.stylist.lookup_keyframes(name, element)?;
+        let blocks = animation
+            .steps
+            .iter()
+            .chain(&animation.steps_with_range_name)
+            .filter_map(|step| match &step.value {
+                KeyframesStepValue::Declarations { block } => Some(block),
+                KeyframesStepValue::ComputedValues => None,
+            });
+        let mut cache = self
+            .refs
+            .keyframes
+            .lock()
+            .unwrap_or_else(|held| held.into_inner());
+        if let Some((held, refs)) = cache.get(name)
+            && held.len() == blocks.clone().count()
+            && held
+                .iter()
+                .zip(blocks.clone())
+                .all(|(held, block)| servo_arc::Arc::ptr_eq(held, block))
+        {
+            return Some(Arc::clone(refs));
+        }
+        let refs = Arc::new(crate::deps::var_refs::keyframe_refs_of(
+            animation,
+            &self.context.guards,
+        ));
+        cache.insert(name.clone(), (blocks.cloned().collect(), Arc::clone(&refs)));
+        Some(refs)
+    }
+
+    /// Records that the element at `node` had its keyframes computed again.
+    pub(super) fn note_refreshed(&self, node: NodeIndex) {
+        self.refreshed.push(node);
     }
 
     /// What the rule chain ending at `rules` reads and declares, computed once per chain.
@@ -250,10 +341,11 @@ impl<'a> RecalcStyle<'a> {
         refs
     }
 
-    /// What the traversal styled, and how many distinct workers ran.
-    pub(crate) fn finish(self) -> (Vec<Restyled>, usize) {
+    /// What the traversal styled, the elements whose keyframes it computed again, and how many
+    /// distinct workers ran.
+    pub(crate) fn finish(self) -> (Vec<Restyled>, Vec<NodeIndex>, usize) {
         let workers = self.workers.load(Ordering::Relaxed).count_ones() as usize;
-        (self.restyled.into_vec(), workers)
+        (self.restyled.into_vec(), self.refreshed.into_vec(), workers)
     }
 }
 
@@ -316,7 +408,7 @@ impl<'doc> DomTraversal<Node<'doc>> for RecalcStyle<'_> {
                 pseudo_identity(&data, &PseudoElement::Before),
                 pseudo_identity(&data, &PseudoElement::After),
             ],
-            readers: self.readers_of(&data),
+            readers: self.readers_of(element, &data),
         });
 
         // The engine's descent flag is not cleared here, because this document does not store one:

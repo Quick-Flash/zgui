@@ -65,12 +65,21 @@ impl Animations {
     /// is for is the frame that *created* an animation: the tick runs before the cascade, and the
     /// cascade is what starts a keyframe animation, so the elements it started are not in that
     /// frame's report and nothing else would ever ask the loop to come back for them.
+    ///
+    /// An element whose animation of no length the cascade added finished is here too, because the
+    /// next tick reports its start and its end.
     pub fn running_elements(&self) -> Vec<NodeIndex> {
         self.set
             .sets
             .read()
             .iter()
-            .filter(|(_, set)| set.running_animation_and_transition_count() > 0)
+            .filter(|(_, set)| {
+                set.running_animation_and_transition_count() > 0
+                    || set
+                        .animations
+                        .iter()
+                        .any(|animation| animation.is_new && animation.duration == 0.0)
+            })
             .map(|(key, _)| node_of(key))
             .collect()
     }

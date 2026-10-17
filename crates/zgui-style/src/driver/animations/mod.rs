@@ -15,13 +15,17 @@
 //! |---|---|
 //! | [`set`] | the animations a document is running, and the clock they are read at |
 //! | `fill` | finished animations that fill forwards, kept in the table across a traversal |
+//! | `refresh` | keyframe values computed again when a custom property they read moves |
+//! | `zero` | keyframe animations with a duration of `0s` |
 //! | [`tick`] | advancing them one frame, and the lifecycle edges that produces |
 //! | [`sample`] | what one element's animations currently evaluate to |
 
 pub(crate) mod fill;
+pub(crate) mod refresh;
 pub mod sample;
 pub mod set;
 pub mod tick;
+pub(crate) mod zero;
 
 pub use crate::driver::animations::sample::AnimatedProperties;
 pub use crate::driver::animations::set::Animations;

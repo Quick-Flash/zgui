@@ -110,7 +110,7 @@ pub fn background_and_border(
     }
     let (fills, _) = fills_of(scene, style, placement);
     let borders = border_widths(placement.border);
-    let stroke = border_stroke(scene, style);
+    let stroke = border_stroke(scene, style, borders, true);
     let last = fills.len().saturating_sub(1);
     let mut pushed = 0;
     for (index, fill) in fills.into_iter().enumerate() {
@@ -216,7 +216,8 @@ fn shaded(
         (SmallVec::from_slice(&[PaintRef::NONE]), false)
     };
     let borders = border_widths(placement.border);
-    let stroke = draws_border.then(|| border_stroke(scene, style));
+    // The shaded pipeline strokes in one colour.
+    let stroke = draws_border.then(|| border_stroke(scene, style, borders, false));
     let last = fills.len().saturating_sub(1);
     let mut pushed = 0;
     for (index, fill) in fills.into_iter().enumerate() {
@@ -300,19 +301,29 @@ fn border_widths(border: Edges<DevicePx>) -> [f32; 4] {
     [border.top.0, border.right.0, border.bottom.0, border.left.0]
 }
 
-/// The paint a box's border is stroked with.
+/// The paint a box's border is stroked with, given the widths in top, right, bottom, left order.
 ///
-/// One quad carries one stroke, so four differently coloured sides are drawn in the first side's
-/// colour that is not fully transparent — which is the top's in every stylesheet that sets a
-/// shorthand, and which is visibly wrong only for the deliberately multicoloured border.
-fn border_stroke(scene: &mut Scene, style: &PaintStyle) -> PaintRef {
-    let color = style
-        .border
-        .colors
-        .iter()
-        .copied()
-        .find(|color| color.alpha() != 0.0)
-        .unwrap_or(Color::TRANSPARENT);
+/// The sides that have a width decide. One colour on all of them is a solid stroke. Different
+/// colours are a [`Paint::Sides`](zgui_scene::Paint::Sides) stroke when `sides` allows it, and the
+/// first visible colour when it does not.
+fn border_stroke(scene: &mut Scene, style: &PaintStyle, widths: [f32; 4], sides: bool) -> PaintRef {
+    let colors = style.border.colors;
+    let shown = || {
+        (0..4)
+            .filter(|&side| widths[side] > 0.0)
+            .map(|side| colors[side])
+    };
+    let color = match shown().next() {
+        Some(first) if shown().all(|color| color == first) => first,
+        Some(_) if sides => return scene.paints.add(zgui_scene::Paint::Sides(colors)),
+        Some(first) => shown().find(|color| color.alpha() != 0.0).unwrap_or(first),
+        // No side has a width, so the stroke draws nothing whatever its colour.
+        None => colors
+            .iter()
+            .copied()
+            .find(|color| color.alpha() != 0.0)
+            .unwrap_or(Color::TRANSPARENT),
+    };
     if color.alpha() == 0.0 {
         return PaintRef::NONE;
     }

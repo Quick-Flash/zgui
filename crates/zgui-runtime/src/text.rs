@@ -221,6 +221,10 @@ impl MeasureContent for Box<dyn TextEngine> {
         (**self).break_lines(key, request)
     }
 
+    fn breaks_reflect(&self, key: zgui_text::ParagraphKey) -> Option<zgui_text_style::BreakingKey> {
+        (**self).breaks_reflect(key)
+    }
+
     fn strut(&mut self, style: &zgui_text_style::TextStyle) -> zgui_text::StrutMetrics {
         (**self).strut(style)
     }

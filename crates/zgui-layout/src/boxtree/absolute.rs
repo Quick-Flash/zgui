@@ -7,7 +7,8 @@
 //! box that positions it. When no ancestor is positioned, that box is the root's, which is the
 //! initial containing block. Painting walks the layout child list, which is where CSS paints a
 //! positioned box. Its entry in the *paint* child list stays where it was written, because
-//! accessible geometry follows the document.
+//! accessible geometry follows the document. A [`Declared`] record keeps where it was written, so
+//! that painting can order it among its new siblings in tree order.
 
 use zgui_dom::side::BoxKey;
 
@@ -21,6 +22,18 @@ pub struct Reparented {
     pub key: BoxKey,
     /// The nearest positioned ancestor's box, which is its containing block.
     pub containing_block: BoxKey,
+}
+
+/// Where an out-of-flow box was written, recorded when it is re-parented.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Declared {
+    /// The box it was written inside.
+    pub parent: BoxKey,
+    /// The nearest in-flow box written before it inside `parent`, if any.
+    ///
+    /// The box paints after this sibling and before the next in-flow one. The key can go stale when
+    /// a patch removes the sibling; a reader then searches the paint child list instead.
+    pub after: Option<BoxKey>,
 }
 
 /// Whether a box establishes the containing block an out-of-flow descendant is positioned against.

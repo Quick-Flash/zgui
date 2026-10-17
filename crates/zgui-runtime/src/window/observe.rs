@@ -246,6 +246,7 @@ impl Window {
         // the frame never learns about, and every later colour change misses it.
         self.update_text_brushes();
         self.build_boxes();
+        self.owe_carried_scrolls_again();
         self.lay_out();
     }
 
@@ -262,6 +263,10 @@ impl Window {
             .union(Dirty::RELAYOUT)
             .union(Dirty::RESHAPE)
             .union(Dirty::REBREAK);
+        // A scroll a view asked for after the last layout pass is carried out by the next one.
+        if self.owes_scrolls() {
+            return true;
+        }
         let document = self.document.borrow();
         let Some(root) = document.root_index() else {
             return false;

@@ -361,6 +361,9 @@ struct Folded {
     subtree_ink: Rect<DevicePx, Device>,
     /// Whether anything at or below this box blends with what is behind it.
     blending: bool,
+    /// Whether anything at or below this box reads what is behind it: it blends with it or
+    /// filters it.
+    reads: bool,
     /// Whether nothing in this subtree overlaps anything else in it.
     disjoint: bool,
     /// Whether every piece in this subtree moves by the same vector as the box above it.
@@ -375,6 +378,7 @@ impl Folded {
         Self {
             subtree_ink: Rect::ZERO,
             blending: false,
+            reads: false,
             disjoint: true,
             rigid: true,
             order: (HitOrder::MAX, 0),
@@ -551,6 +555,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         }
         let first_fragment = (!fragments.is_empty()).then(|| self.scratch.written[fragments.start]);
         let mut blending = placed.blends;
+        let mut below = false;
         let mut disjoint = true;
         let mut rigid = placed.rigid;
         let mut subtree_ink = self.scratch.child_inks[inks_mark..]
@@ -617,14 +622,14 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                 Some(movement) if clean && self.can_translate(child) => {
                     self.translate(child, movement)
                 }
-                _ => match self.layout_shift(child, &placed, owed.node) {
+                _ => match self.layout_shift(child, &placed, previous_shift, owed.node) {
                     Some((shift, snapped)) => {
                         // Adopted before the carry, so the walk finds every box below composed
                         // from the result it holds — this one included.
                         let state = self.store.state_mut(child);
                         state.composed = state.unrounded;
                         state.snapped = snapped;
-                        if shift.by == (0.0, 0.0) {
+                        if shift.by == (0.0, 0.0) && shift.scrolled == (0.0, 0.0) {
                             self.cached(child)
                         } else {
                             self.translate(child, shift)
@@ -641,6 +646,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             };
             self.scratch.child_inks.push(folded.subtree_ink);
             blending |= folded.blending;
+            below |= folded.reads;
             disjoint &= folded.disjoint;
             rigid &= folded.rigid;
             subtree_ink = subtree_ink.union(folded.subtree_ink);
@@ -660,10 +666,17 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         disjoint &= !child_inks.iter().any(|child| overlaps(ink, *child));
         disjoint &= pairwise_disjoint(child_inks);
 
+        let mut folded = FragmentFlags::EMPTY;
+        if blending {
+            folded = folded.union(FragmentFlags::HAS_BLENDING_DESCENDANT);
+        }
+        if below {
+            folded = folded.union(FragmentFlags::READS_BACKDROP_BELOW);
+        }
         self.record_fold(
             fragments.clone(),
             subtree_ink,
-            blending,
+            folded,
             disjoint,
             rigid,
             order,
@@ -674,6 +687,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         Folded {
             subtree_ink,
             blending,
+            reads: below || placed.blends || placed.flags.contains(FragmentFlags::FILTERS_BACKDROP),
             disjoint,
             rigid,
             order,
@@ -717,6 +731,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         usable.then_some(rigid::Move {
             by,
             kind: rigid::MoveKind::Scroll,
+            scrolled: by,
             clip: placed.descent.clip,
             shift: placed.descent.shift,
         })
@@ -737,10 +752,13 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
     /// edge below the other way, which is a box of a different shape and not a moved one.
     ///
     /// Answers the snapped result beside the move, which the caller adopts before carrying.
+    /// `previous_shift` is the shift the child was last composed under: what the offsets above it
+    /// scrolled since then is part of the move as well.
     fn layout_shift(
         &self,
         child: BoxKey,
         placed: &Placed,
+        previous_shift: (f32, f32),
         generator: Option<zgui_dom::NodeKey>,
     ) -> Option<(rigid::Move, cephal::Layout)> {
         let owed = self.owed_by(child, generator);
@@ -787,6 +805,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             rigid::Move {
                 by: (dx, dy),
                 kind: rigid::MoveKind::Layout,
+                scrolled: (shift.0 - previous_shift.0, shift.1 - previous_shift.1),
                 clip: placed.descent.clip,
                 shift,
             },
@@ -841,6 +860,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         let fragments = self.store.fragments_of_box(child);
         let mut subtree_ink = Rect::ZERO;
         let mut blending = false;
+        let mut reads = false;
         let mut disjoint = true;
         let mut rigid = true;
         let mut order = (HitOrder::MAX, 0);
@@ -856,6 +876,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             blending |= fragment
                 .flags
                 .contains(FragmentFlags::HAS_BLENDING_DESCENDANT);
+            reads |= fragment.flags.intersects(FragmentFlags::READS_BACKDROP);
             disjoint &= fragment.subtree_disjoint;
             rigid &= fragment.subtree_rigid;
             order = (
@@ -866,6 +887,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         Folded {
             subtree_ink,
             blending,
+            reads,
             disjoint,
             rigid,
             order,
@@ -1059,8 +1081,8 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                 content_hash: 0,
             };
         }
-        // A bar sits in the gutter, which is inside the box's padding box and outside its content
-        // box, so it is placed from the box's own rectangles rather than from anything the content
+        // A bar sits in the gutter, which is inside the box's padding box against its border and
+        // outside its padding and content box, so it is placed from the box's own rectangles rather than from anything the content
         // produced — and it is drawn under the chain that clips the *scroller*, never under the one
         // the scroller imposes on what it scrolls, or it would disappear along with the content.
         if let FragmentKind::Scrollbar { axis, part } = kind {
@@ -1104,7 +1126,16 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                 self.tables.device.scale,
             )
         });
-        let content_hash = resolved.map_or(0, crate::inline::ellipsis::line_hash);
+        let mut content_hash = resolved.map_or(0, crate::inline::ellipsis::line_hash);
+        let mut local_ink = local_ink;
+        let mut flags = FragmentFlags::EMPTY;
+        if let Some(line_box) = resolved
+            && let Some(effects) = self.inline_effects(key, placed, line, rect, line_box)
+        {
+            local_ink = local_ink.union(effects.ink);
+            content_hash ^= effects.hash;
+            flags = FragmentFlags::INLINE_EFFECTS;
+        }
         Geometry {
             border_box: rect,
             padding_box: rect,
@@ -1114,7 +1145,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             ink: on_device(placed, local_ink),
             local_ink,
             // A line is drawn inside its own box's clip and transform, and establishes neither.
-            flags: FragmentFlags::EMPTY,
+            flags,
             clip: placed.descent.clip,
             // A line is drawn under the clip its own box imposes, which that box measured in its
             // own space — the space its own transform maps onto the device.
@@ -1126,6 +1157,60 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             reads_outside: false,
             content_hash,
         }
+    }
+
+    /// What the nested inline boxes on one line paint, or nothing when none of them paints.
+    ///
+    /// Asked only of a context that holds nested inline boxes, so a paragraph of plain text pays
+    /// one empty-slice test per line.
+    fn inline_effects(
+        &self,
+        key: BoxKey,
+        placed: &Placed,
+        line: usize,
+        rect: Rect<DevicePx, Device>,
+        line_box: &crate::inline::lines::LineBox,
+    ) -> Option<InlineEffects> {
+        let resolution = self.store.inline_resolution(key)?;
+        let slices = resolution.slices_on(line);
+        if slices.is_empty() {
+            return None;
+        }
+        let root = &self.store.node(key).style;
+        let scale = self.tables.device.scale;
+        let mut held: Option<InlineEffects> = None;
+        for slice in slices {
+            let style = &self.store.node(slice.box_).style;
+            if !crate::fragment::ink::inline_effects(style, root, slice) {
+                continue;
+            }
+            let part = crate::inline::slices::device_rect(placed.content_box, slice);
+            let ink = crate::fragment::ink::of_inline(
+                style,
+                part,
+                rect,
+                line_box.extents,
+                line_box.ink,
+                scale,
+            );
+            let hash = zgui_scene::ContentHash::new()
+                .u32(slice.box_.index())
+                .f32(part.origin.x.0 - rect.origin.x.0)
+                .f32(part.origin.y.0 - rect.origin.y.0)
+                .f32(part.size.width.0)
+                .f32(part.size.height.0)
+                .u32(u32::from(slice.first) | u32::from(slice.last) << 1)
+                .f32(slice.shift)
+                .finish();
+            held = Some(match held {
+                Some(effects) => InlineEffects {
+                    ink: effects.ink.union(ink),
+                    hash: effects.hash.rotate_left(5) ^ hash,
+                },
+                None => InlineEffects { ink, hash },
+            });
+        }
+        held
     }
 
     /// The scrollport one box's bars are placed in.
@@ -1144,6 +1229,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             |element| self.tables.scroll.of(element),
         );
         crate::scroll_region::bar::Scrollport {
+            padding_box: placed.padding_box,
             inner: placed.padding_box.inset(placed.padding),
             content_box: placed.content_box,
             content,
@@ -1184,9 +1270,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         if let Some(fragment) = self.store.fragment_mut(frag) {
             fragment.kind = kind;
             fragment.parent = parent;
-            let kept = fragment
-                .flags
-                .contains(FragmentFlags::HAS_BLENDING_DESCENDANT);
+            let kept = fragment.flags.intersection(FragmentFlags::FOLDED);
             fragment.border_box = next.border_box;
             fragment.padding_box = next.padding_box;
             fragment.content_box = next.content_box;
@@ -1203,18 +1287,25 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             // Kept on the fragment because the painter keys its recording on it: a line whose cut
             // moved while its rectangle stood still is re-encoded only if the fragment says so.
             fragment.content_hash = next.content_hash;
-            fragment.flags = if kept {
-                next.flags.union(FragmentFlags::HAS_BLENDING_DESCENDANT)
-            } else {
-                next.flags
-            };
+            fragment.flags = next.flags.union(kept);
             if change != Change::Identical {
                 counter::bump(Counter::FragmentsRebuilt);
             }
         }
         self.store.set_read_extent(frag, next.reads_outside);
 
-        let own = owed.own;
+        // A line that paints its nested inline boxes repaints when one of them does: those boxes
+        // are below the line's own box, so their marks are in its subtree.
+        let own = if matches!(kind, FragmentKind::Line { .. })
+            && (next.flags.contains(FragmentFlags::INLINE_EFFECTS)
+                || previous
+                    .as_ref()
+                    .is_some_and(|previous| previous.flags.contains(FragmentFlags::INLINE_EFFECTS)))
+        {
+            owed.own | (owed.subtree & REPAINTS_IN_PLACE)
+        } else {
+            owed.own
+        };
         // What this fragment's chain admits *now*, which is the region its next ink can be drawn
         // in. Where it *was* is deliberately not cut to anything: the chain it was drawn under
         // belongs to a frame that is gone, and the node it named holds where its clipping box has
@@ -1344,8 +1435,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         kind: FragmentKind,
         next: &Geometry,
     ) -> Option<[Option<Rect<DevicePx, Device>>; 4]> {
-        let unflagged =
-            |flags: FragmentFlags| flags.without(FragmentFlags::HAS_BLENDING_DESCENDANT);
+        let unflagged = |flags: FragmentFlags| flags.without(FragmentFlags::FOLDED);
         if kind != FragmentKind::Box
             || previous.kind != kind
             || unflagged(previous.flags) != unflagged(next.flags)
@@ -1423,7 +1513,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         &mut self,
         fragments: core::ops::Range<usize>,
         subtree_ink: Rect<DevicePx, Device>,
-        blending: bool,
+        folded: FragmentFlags,
         disjoint: bool,
         rigid: bool,
         order: (HitOrder, HitOrder),
@@ -1437,15 +1527,17 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             fragment.subtree_disjoint = disjoint;
             fragment.subtree_rigid = rigid;
             fragment.subtree_order = order;
-            fragment.flags = if blending {
-                fragment.flags.union(FragmentFlags::HAS_BLENDING_DESCENDANT)
-            } else {
-                fragment
-                    .flags
-                    .without(FragmentFlags::HAS_BLENDING_DESCENDANT)
-            };
+            fragment.flags = fragment.flags.without(FragmentFlags::FOLDED).union(folded);
         }
     }
+}
+
+/// What the nested inline boxes on one line paint.
+struct InlineEffects {
+    /// The union of what they paint, in the line's own space.
+    ink: Rect<DevicePx, Device>,
+    /// A fingerprint of where their parts are, relative to the line box.
+    hash: u64,
 }
 
 /// Whether a piece is a box whose own painting is nothing.

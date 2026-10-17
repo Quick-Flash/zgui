@@ -654,6 +654,7 @@ impl GlyphSource for FrameContent<'_> {
                         format: crate::content::glyphs::format_of(run.raster_style(false)),
                         paint: run.brush,
                         synthetic_bold: run.synthetic_bold * run.size,
+                        text_start: run.text_start,
                     });
                     return;
                 }
@@ -682,6 +683,7 @@ impl GlyphSource for FrameContent<'_> {
                 format: crate::content::glyphs::format_of(style),
                 paint: run.brush,
                 synthetic_bold: 0.0,
+                text_start: run.text_start,
             });
         });
     }

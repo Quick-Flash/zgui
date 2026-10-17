@@ -25,7 +25,7 @@ mod frozen;
 pub(crate) mod shift;
 
 use zgui_dom::NodeKey;
-use zgui_geom::{CssPx, Point, Scale};
+use zgui_geom::{CssPx, Point, Rect, Scale};
 use zgui_scroll::{Align, Behavior, Stretch};
 use zgui_vocab::{EventKind, Payload, ScrollDelta, ScrollPhase, Timestamp, WheelEvent};
 
@@ -199,7 +199,28 @@ impl Window {
         }
     }
 
-    /// Carries out a scroll a view asked for.
+    /// Queues a scroll a view asked for, to be carried out after the next layout pass.
+    ///
+    /// The view that asks has often just added what it scrolls to, in the same flush: a row
+    /// appended to a log, a message to a thread. The layout that holds it does not exist yet, so
+    /// the request waits for [`Window::carry_out_owed_scrolls`], which runs between that layout
+    /// pass and the fragment pass that composes it.
+    pub(crate) fn owe_scroll(
+        &mut self,
+        node: zgui_view::NodeId,
+        target: zgui_view::ScrollTarget,
+        behavior: zgui_view::ScrollBehavior,
+    ) {
+        let Some(key) = zgui_view_dom::id::to_document(node) else {
+            return;
+        };
+        self.owed_scrolls.push((key, target, behavior));
+    }
+
+    /// Carries out a scroll at once, against the layout the window holds.
+    ///
+    /// For a request from outside a frame, such as an accessibility action, which names a node
+    /// the last frame laid out.
     pub(crate) fn carry_out_scroll(
         &mut self,
         node: zgui_view::NodeId,
@@ -213,6 +234,58 @@ impl Window {
             return;
         };
         self.place(container, to, translate(behavior));
+    }
+
+    /// Queues again the scrolls the last layout pass carried out, before a relayout in the same
+    /// frame.
+    ///
+    /// A surface that an observation delivery places and caps changes its geometry after the
+    /// first layout pass. A scroll into view measured against that first pass can then leave its
+    /// node outside the capped scrollport.
+    pub(crate) fn owe_carried_scrolls_again(&mut self) {
+        if self.carried_scrolls.is_empty() {
+            return;
+        }
+        let mut again = core::mem::take(&mut self.carried_scrolls);
+        again.extend(core::mem::take(&mut self.owed_scrolls));
+        self.owed_scrolls = again;
+    }
+
+    /// Forgets the scrolls carried out this frame, once no relayout of this frame can follow.
+    pub(crate) fn forget_carried_scrolls(&mut self) {
+        self.carried_scrolls.clear();
+    }
+
+    /// Whether a scroll a view asked for still waits for a layout pass.
+    pub(crate) fn owes_scrolls(&self) -> bool {
+        !self.owed_scrolls.is_empty()
+    }
+
+    /// Carries out every queued scroll against the layout pass that has just run.
+    ///
+    /// Called by [`Window::lay_out`] after the offsets are clamped to the new extents and before
+    /// the fragment pass, which composes what this moves. An instant scroll is therefore shown by
+    /// this frame and asks for no other; a smooth one asks for the frames its motion takes.
+    pub(crate) fn carry_out_owed_scrolls(&mut self) {
+        self.carried_scrolls.clear();
+        if self.owed_scrolls.is_empty() {
+            return;
+        }
+        for (node, target, behavior) in core::mem::take(&mut self.owed_scrolls) {
+            // A relative scroll moves again each time it is carried out.
+            if !matches!(target, zgui_view::ScrollTarget::By(_)) {
+                self.carried_scrolls.push((node, target, behavior));
+            }
+            let Some((container, to)) = self.destination(node, target) else {
+                continue;
+            };
+            let behavior = translate(behavior);
+            if behavior.animates() {
+                self.place(container, to, behavior);
+            } else {
+                self.place_in_frame(container, to);
+            }
+        }
     }
 
     /// Carries out what a touch gesture asked for.
@@ -401,6 +474,31 @@ impl Window {
         }
     }
 
+    /// Puts one container at an offset at once, from inside the frame that composes it.
+    ///
+    /// The same as [`Window::place`] with an instant behaviour, less the frame request: the
+    /// fragment pass of this frame is still to run, and it composes the mark.
+    fn place_in_frame(
+        &mut self,
+        container: NodeKey,
+        to: Point<zgui_geom::DevicePx, zgui_geom::Device>,
+    ) {
+        if self.is_frozen(container) {
+            return;
+        }
+        let before = self.scroll.borrow().offset_of(container);
+        let moved = {
+            let layout = self.layout.borrow();
+            self.scroll
+                .borrow_mut()
+                .scroll_to(&layout, container, to, Behavior::Instant)
+        };
+        if moved.is_some() && self.scroll.borrow().offset_of(container) != before {
+            let mut document = self.document.borrow_mut();
+            zgui_scroll::mark::scrolled(&mut document, &[container]);
+        }
+    }
+
     /// Advances every smooth scroll and every elastic edge, and marks what moved.
     ///
     /// A gap longer than [`PARKED_FOR`] intervals is spent on nothing rather than on the motion,
@@ -554,6 +652,11 @@ impl Window {
     }
 
     /// Which container brings `node` into view, and the offset that does it.
+    ///
+    /// Measured from the resolved layout, so a node laid out for the first time by this frame's
+    /// layout pass is found before the fragment pass has composed it. Sticky offsets and
+    /// transforms are ignored. A node placed by line layout, which has no origin of its own, is
+    /// measured from the fragments the last frame composed.
     fn aligned_offset(
         &self,
         node: NodeKey,
@@ -572,11 +675,22 @@ impl Window {
         let layout = self.layout.borrow();
         let target_box = *layout.boxes_of(node).first()?;
         let container_box = *layout.boxes_of(container).first()?;
-        let target = layout.fragments_of_box(target_box).first().copied()?;
-        let port = layout.fragments_of_box(container_box).first().copied()?;
-        let target = layout.fragment(target)?.border_box;
-        let port = layout.fragment(port)?.content_box;
         let at = self.scroll.borrow().offset_of(container);
+        let (target, port) = match zgui_layout::scroll_region::into_view::target_in(
+            &layout,
+            container_box,
+            target_box,
+        ) {
+            Some((target, size)) => (target, Rect::new(at, size)),
+            None => {
+                let target = layout.fragments_of_box(target_box).first().copied()?;
+                let port = layout.fragments_of_box(container_box).first().copied()?;
+                (
+                    layout.fragment(target)?.border_box,
+                    layout.fragment(port)?.content_box,
+                )
+            }
+        };
         Some((
             container,
             zgui_scroll::into_view::offset_for(at, target, port, align),

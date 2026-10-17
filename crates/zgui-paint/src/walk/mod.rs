@@ -571,15 +571,14 @@ impl Pass<'_, '_> {
         style: &'e crate::lower::PaintStyle,
         decorations: &'e [crate::emit::text::DecorationStyle],
         text_fill: Option<&'e crate::lower::background::GradientSpec>,
+        inline: &'e [crate::emit::inline::InlinePaint],
     ) -> Emission<'e>
     where
         Self: 'e,
     {
-        let radii = crate::lower::border::radii_of(
-            &self.input.store.node(fragment.box_).style,
-            fragment.border_box,
-            self.input.scale,
-        );
+        let node = self.input.store.node(fragment.box_);
+        let radii =
+            crate::lower::border::radii_of(&node.style, fragment.border_box, self.input.scale);
         Emission {
             style,
             shaders: self.input.shaders,
@@ -604,6 +603,8 @@ impl Pass<'_, '_> {
             alpha: self.alpha(),
             decorations,
             text_fill,
+            inline,
+            nested_inline: fragment.kind == FragmentKind::Box && node.is_nested_inline(),
             glyphs: self.input.glyphs,
             glyph_placements: self.input.glyph_placements,
             highlights: self.input.highlights,
@@ -641,6 +642,68 @@ impl Pass<'_, '_> {
             width: mark.width,
             at_start: cut.at_start,
         })
+    }
+
+    /// A fingerprint of the styles and animations of the nested inline boxes a line paints.
+    fn inline_signature(&mut self, slices: &[zgui_layout::inline::slices::InlineSlice]) -> u64 {
+        if slices.is_empty() {
+            return 0;
+        }
+        let store = self.input.store;
+        let mut hash = zgui_scene::ContentHash::new().u32(slices.len() as u32);
+        for slice in slices {
+            let style = self
+                .painter
+                .styles
+                .lower(&store.node(slice.box_).style, self.input.scale);
+            let anim = self
+                .anim_of(store, slice.box_)
+                .map_or(0, AnimOverride::signature);
+            hash = hash.u32(style.index()).u64(anim);
+        }
+        hash.finish()
+    }
+
+    /// The parts of nested inline boxes a line paints, ready to emit.
+    fn inline_paints(
+        &mut self,
+        fragment: &Fragment,
+        slices: &[zgui_layout::inline::slices::InlineSlice],
+    ) -> Vec<crate::emit::inline::InlinePaint> {
+        if slices.is_empty() {
+            return Vec::new();
+        }
+        let store = self.input.store;
+        let Some(content_box) = store
+            .fragments_of_box(fragment.box_)
+            .first()
+            .and_then(|frag| store.fragment(*frag))
+            .map(|own| own.content_box)
+        else {
+            return Vec::new();
+        };
+        let transform = crate::lower::transform::of(fragment);
+        let mut out = Vec::with_capacity(slices.len());
+        for slice in slices {
+            let computed = &store.node(slice.box_).style;
+            let reference = self.painter.styles.lower(computed, self.input.scale);
+            let Some(mut style) = self.painter.styles.get(reference).cloned() else {
+                continue;
+            };
+            if let Some(over) = self.anim_of(store, slice.box_) {
+                crate::lower::anim::compose(&mut style, over);
+            }
+            out.push(crate::emit::inline::InlinePaint::of(
+                slice,
+                crate::walk::order::faded(&style, self.alpha()),
+                computed,
+                content_box,
+                fragment.clip,
+                transform,
+                self.input.scale,
+            ));
+        }
+        out
     }
 
     /// The fingerprint of what is drawn with a line fragment besides its glyphs, and zero for
@@ -746,6 +809,7 @@ impl Pass<'_, '_> {
         }
         let clip = fragment.clip;
         let transform = crate::lower::transform::of(fragment);
+        let slices = inline_slices(store, fragment);
         let decorations = self.decorations.faded(self.alpha());
         let text_fill = self.text_fills.in_force().cloned();
         let painted = Painted {
@@ -758,7 +822,11 @@ impl Pass<'_, '_> {
                     .input
                     .store
                     .custom_reference(fragment.box_)
-                    .map_or(0, |(token, _, _)| self.input.custom.revision(token)),
+                    .map_or(0, |(token, _, _)| {
+                        // The token is part of the signature: a new implementation starts at
+                        // the same revisions the old one had.
+                        (u64::from(token) << 32) | self.input.custom.revision(token)
+                    }),
                 _ => 0,
             },
             pointer: self.pointer_signature(style_ref),
@@ -789,6 +857,7 @@ impl Pass<'_, '_> {
                 self.input.scale,
             )),
             highlights: self.highlight_signature(fragment),
+            inline: self.inline_signature(slices),
         };
         let phase = self.layer_phase(fragment, transform);
         // A record drawing tiles replays only while their source stands: a source the layer cache
@@ -827,7 +896,9 @@ impl Pass<'_, '_> {
                 if let Some(over) = self.anim_of(self.input.store, fragment.box_) {
                     crate::lower::anim::compose(&mut style, over);
                 }
-                let emission = self.emission(fragment, &style, &decorations, text_fill.as_ref());
+                let inline = self.inline_paints(fragment, slices);
+                let emission =
+                    self.emission(fragment, &style, &decorations, text_fill.as_ref(), &inline);
                 // Emptied immediately before the encoding rather than after it, so that whatever a
                 // source placed for somebody else — a run visited and then declined, a fragment
                 // that returned early above — cannot be attributed to this fragment and held for
@@ -885,6 +956,24 @@ impl Pass<'_, '_> {
             self.report.emitted.push(frag);
         }
     }
+}
+
+/// The parts of nested inline boxes a line paints, in tree order.
+///
+/// Empty for every fragment that is not a line carrying [`FragmentFlags::INLINE_EFFECTS`].
+fn inline_slices<'s>(
+    store: &'s LayoutStore,
+    fragment: &Fragment,
+) -> &'s [zgui_layout::inline::slices::InlineSlice] {
+    let FragmentKind::Line { line, .. } = fragment.kind else {
+        return &[];
+    };
+    if !fragment.flags.contains(FragmentFlags::INLINE_EFFECTS) {
+        return &[];
+    }
+    store
+        .inline_resolution(fragment.box_)
+        .map_or(&[], |resolution| resolution.slices_on(line as usize))
 }
 
 impl stacking::Visitor for Pass<'_, '_> {
@@ -976,6 +1065,7 @@ impl stacking::Visitor for Pass<'_, '_> {
             self.report.primitives += group::backdrop(
                 self.scene,
                 &style,
+                &node.style,
                 fragment,
                 fragment.clip,
                 self.input.shaders,
@@ -1029,7 +1119,7 @@ impl stacking::Visitor for Pass<'_, '_> {
                 && style.outline.is_some()
                 && self.reaches(fragment.ink)
             {
-                let emission = self.emission(fragment, &style, &[], None);
+                let emission = self.emission(fragment, &style, &[], None, &[]);
                 self.report.primitives += order::outline(self.scene, &emission);
             }
         }

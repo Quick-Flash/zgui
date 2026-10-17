@@ -171,9 +171,16 @@ impl<'gpu> PlanBuilder<'gpu> {
         self.acquire_in(scale, GroupPool::FORMAT)
     }
 
-    /// Lends a target holding the same thing `like` does, which is what a copy needs.
+    /// Lends a target holding the same thing `like` does, at its resolution, which is what a copy
+    /// needs.
+    ///
+    /// Never reduces the resolution: a copy into a target of another resolution puts every texel
+    /// at the wrong place. Returns `None` when the budget will not take the target.
     pub fn acquire_like(&mut self, like: TargetRef) -> Option<GroupSlot> {
-        self.acquire_in(TargetScale::Full, self.format_of(like))
+        let slot = self
+            .pool
+            .acquire_exact(self.gpu, like.scale(), self.format_of(like))?;
+        Some(self.lend(slot))
     }
 
     /// What a target holds.
@@ -187,12 +194,17 @@ impl<'gpu> PlanBuilder<'gpu> {
     /// Lends a target at `scale` in `format`, or reports that the pool could not.
     fn acquire_in(&mut self, scale: TargetScale, format: wgpu::TextureFormat) -> Option<GroupSlot> {
         let slot = self.pool.acquire(self.gpu, scale, format)?;
+        Some(self.lend(slot))
+    }
+
+    /// Records a lease the pool made.
+    fn lend(&mut self, slot: GroupSlot) -> GroupSlot {
         self.lent.push(slot);
         // A lease starts with whatever the previous one left behind, so the first pass of this one
         // discards it. Tracking it per lease rather than per frame is what makes a reused target
         // safe: the alternative is a filter reading a stranger's content outside its own region.
         self.unwritten.push(slot);
-        Some(slot)
+        slot
     }
 
     /// Whether a lent target still holds whatever the lease before it left there.

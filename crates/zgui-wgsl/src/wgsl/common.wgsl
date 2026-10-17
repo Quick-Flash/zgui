@@ -127,7 +127,7 @@ struct Clip {
 
 // One paint source.
 struct Paint {
-    // 0 nothing, 1 solid, 2 gradient, 3 image.
+    // 0 nothing, 1 solid, 2 gradient, 3 image, 4 one colour per border side.
     kind: u32,
     // 0 linear, 1 radial, 2 conic.
     gradient: u32,
@@ -167,6 +167,7 @@ const PAINT_NONE: u32 = 0u;
 const PAINT_SOLID: u32 = 1u;
 const PAINT_GRADIENT: u32 = 2u;
 const PAINT_IMAGE: u32 = 3u;
+const PAINT_SIDES: u32 = 4u;
 
 const SPACE_SRGB: u32 = 0u;
 const SPACE_OKLAB: u32 = 1u;

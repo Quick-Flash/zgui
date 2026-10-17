@@ -309,9 +309,11 @@ impl App {
         self
     }
 
-    /// Installs the application's own stylesheet.
+    /// Adds a stylesheet of the application's own.
+    ///
+    /// Each call adds one sheet. The sheets cascade in call order.
     pub fn with_stylesheet(mut self, css: impl Into<String>) -> Self {
-        self.options.stylesheet = Some(css.into());
+        self.options.stylesheets.push(css.into());
         self
     }
 

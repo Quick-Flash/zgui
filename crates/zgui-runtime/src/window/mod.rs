@@ -24,6 +24,7 @@ pub mod resize;
 pub mod scale;
 pub mod scheme;
 pub mod scroll;
+mod secure;
 mod select;
 mod sheets;
 mod surface_focus;
@@ -83,13 +84,13 @@ pub const ATLAS_SOFT_BYTES: u64 = 64 * 1024 * 1024;
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct WindowContent {
-    /// The application's own stylesheet, as text.
-    pub stylesheet: Option<String>,
-    /// This window's own sheet, cascaded after the application's.
+    /// The application's own stylesheets, as text. They cascade in this order.
+    pub stylesheets: Vec<String>,
+    /// This window's own sheets, cascaded after the application's, in this order.
     ///
     /// For the window that is not the application: an inspector, a preferences panel, a palette.
-    /// Later in the cascade than the application's own sheet, so a rule of equal weight here wins.
-    pub window_stylesheet: Option<String>,
+    /// Later in the cascade than the application's own sheets, so a rule of equal weight here wins.
+    pub window_stylesheets: Vec<String>,
     /// What to tell about each frame after it has been produced, if anything.
     ///
     /// An option and not a list: one seam, one occupant. A window with several probes would have
@@ -102,17 +103,19 @@ pub struct WindowContent {
 impl WindowContent {
     /// The application's options with one window's own laid over them.
     ///
-    /// The application's stylesheet stays the application's and the window's becomes the second
-    /// sheet, so a window sheet extends the application's rather than replacing it. A window that
+    /// The application's stylesheets stay the application's. The window's sheets come after them,
+    /// so a window sheet extends the application's sheets. A window that
     /// brought its own probe is watched by that one; one that brought none is watched by whatever
     /// watches the application.
     pub(crate) fn layered_with(&self, window: &Self) -> Self {
         Self {
-            stylesheet: self.stylesheet.clone(),
-            window_stylesheet: window
-                .window_stylesheet
-                .clone()
-                .or_else(|| window.stylesheet.clone()),
+            stylesheets: self.stylesheets.clone(),
+            window_stylesheets: window
+                .stylesheets
+                .iter()
+                .chain(&window.window_stylesheets)
+                .cloned()
+                .collect(),
             probe: window.probe.clone().or_else(|| self.probe.clone()),
         }
     }
@@ -308,6 +311,21 @@ pub struct Window {
     /// re-derived from where the finger is now stops naming the list as soon as the drag carries
     /// it past the edge of its own scrollport.
     panning: Vec<zgui_dom::NodeKey>,
+    /// The scrolls views asked for, in the order they asked, carried out after the next layout
+    /// pass so that they measure the layout that holds what the same flush added.
+    owed_scrolls: Vec<(
+        zgui_dom::NodeKey,
+        zgui_view::ScrollTarget,
+        zgui_view::ScrollBehavior,
+    )>,
+    /// The scrolls the last layout pass of this frame carried out that give the same result when
+    /// carried out again. A relayout after an observation delivery carries them out once more, so
+    /// they measure the geometry that relayout produces.
+    carried_scrolls: Vec<(
+        zgui_dom::NodeKey,
+        zgui_view::ScrollTarget,
+        zgui_view::ScrollBehavior,
+    )>,
     /// When the earliest contact still being held becomes a long press.
     ///
     /// Kept as a moment on the loop's own clock rather than derived when the park is computed,
@@ -353,6 +371,8 @@ pub struct Window {
     /// inside a frame, the clipboard is readable only from the loop that owns the platform, and
     /// so the request is recorded here and answered by whoever has one.
     wants_paste: Vec<zgui_dom::NodeKey>,
+    /// Fields whose `secure` attribute changed, waiting for the frame to mask or unmask them.
+    secure_changes: Rc<RefCell<Vec<zgui_dom::NodeKey>>>,
     /// Clipboard text on its way into an element, waiting for the frame that will type it in.
     ///
     /// A paste edits the document and announces an input event, and both of those are a frame's
@@ -575,10 +595,13 @@ impl Window {
             (atlas_limits.max_texture_size - 2).max(1) as u32,
         );
         let sources = images.source_queue();
-        dom.set_attribute_hook(Rc::new(move |node, name, value| {
-            if name.as_str() == "src" {
-                sources.borrow_mut().push((node, value.map(str::to_owned)));
-            }
+        let secure_changes: Rc<RefCell<Vec<zgui_dom::NodeKey>>> = Rc::default();
+        let secure_heard = Rc::clone(&secure_changes);
+        dom.watch_attributes_of(zgui_interned::ElementName::new("field"));
+        dom.set_attribute_hook(Rc::new(move |node, name, value| match name.as_str() {
+            "src" => sources.borrow_mut().push((node, value.map(str::to_owned))),
+            crate::editing::SECURE => secure_heard.borrow_mut().push(node),
+            _ => {}
         }));
         let dom_handle = DomHandle::from_rc(Rc::clone(&dom) as Rc<dyn zgui_view::Dom>);
         let document_id = dom.document_id();
@@ -598,14 +621,12 @@ impl Window {
             StyleEngine::new(&borrowed, metrics, viewport)
         };
         let mut sheets = Vec::new();
-        // The application's sheet first and this window's own second, so a rule of equal weight in
-        // a window's sheet wins over the application's.
-        for css in [
-            options.stylesheet.as_deref(),
-            options.window_stylesheet.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
+        // The application's sheets first and this window's own after them, each in call order, so
+        // a rule of equal weight in a later sheet wins.
+        for css in options
+            .stylesheets
+            .iter()
+            .chain(&options.window_stylesheets)
         {
             let borrowed = document.borrow();
             let (handle, diagnostics) =
@@ -715,6 +736,8 @@ impl Window {
             scroll_settings: zgui_platform::ScrollSettings::default(),
             scroll_frozen: false,
             panning: Vec::new(),
+            owed_scrolls: Vec::new(),
+            carried_scrolls: Vec::new(),
             long_press_due: None,
             editors: crate::editing::Editors::new(),
             carets: crate::caret::Carets::new(),
@@ -723,6 +746,7 @@ impl Window {
             selecting: None,
             clipboard: Vec::new(),
             wants_paste: Vec::new(),
+            secure_changes,
             pastes: Vec::new(),
             ime: zgui_input::Ime::new(),
             queued: Vec::new(),

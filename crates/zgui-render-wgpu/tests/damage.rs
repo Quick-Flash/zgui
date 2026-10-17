@@ -27,8 +27,8 @@ struct Item {
     bounds: (f32, f32, f32, f32),
     /// What colour it is.
     color: [u8; 3],
-    /// The deviation of the blur over what lies beneath it, or zero for a plain rectangle.
-    frost: f32,
+    /// The deviation of the blur over what lies beneath it, or `None` for a plain rectangle.
+    frost: Option<f32>,
     /// How far the coordinate system this is drawn under is translated from the viewport's.
     ///
     /// The transform half of the fixture. A rectangle drawn under a coordinate system of its own
@@ -44,7 +44,7 @@ impl Item {
         Self {
             bounds,
             color,
-            frost: 0.0,
+            frost: None,
             shift: (0.0, 0.0),
         }
     }
@@ -60,7 +60,7 @@ impl Item {
         Self {
             bounds,
             color: [0; 3],
-            frost: deviation,
+            frost: Some(deviation),
             shift: (0.0, 0.0),
         }
     }
@@ -82,10 +82,12 @@ impl Item {
 
     /// Every pixel this reads, which is what it paints unless it filters what is beneath it.
     fn source(&self) -> Rect<DevicePx, Device> {
-        if self.frost > 0.0 {
-            BackdropFilter::new(self.ink(), [Filter::Blur(self.frost)].into_iter().collect()).source
-        } else {
-            self.ink()
+        match self.frost {
+            Some(deviation) => {
+                BackdropFilter::new(self.ink(), [Filter::Blur(deviation)].into_iter().collect())
+                    .source
+            }
+            None => self.ink(),
         }
     }
 }
@@ -102,10 +104,10 @@ fn build(items: &[Item]) -> Scene {
         white,
     ));
     for (index, item) in items.iter().enumerate() {
-        if item.frost > 0.0 {
+        if let Some(deviation) = item.frost {
             scene.push_backdrop(BackdropFilter::new(
                 item.ink(),
-                [Filter::Blur(item.frost)].into_iter().collect(),
+                [Filter::Blur(deviation)].into_iter().collect(),
             ));
         } else {
             let paint = scene.paints.add(zgui_scene::Paint::Solid(opaque(
@@ -231,10 +233,15 @@ fn transform_animation(step: i32) -> Vec<Item> {
 /// exactly why it is the fixture that matters: the damage that reaches it comes from the content
 /// beneath it, and a rule that only looked at what changed would miss the region the panel reads.
 fn backdrop_filter_over_animating_content(step: i32) -> Vec<Item> {
+    frosted_over_animating_content(step, 5.0)
+}
+
+/// [`backdrop_filter_over_animating_content`] with a blur of `deviation`.
+fn frosted_over_animating_content(step: i32, deviation: f32) -> Vec<Item> {
     vec![
         Item::plain((0.0, 0.0, 128.0, 128.0), [230, 230, 230]),
         Item::plain((8.0 + step as f32 * 3.0, 40.0, 32.0, 48.0), [20, 20, 200]),
-        Item::frosted((32.0, 32.0, 64.0, 64.0), 5.0),
+        Item::frosted((32.0, 32.0, 64.0, 64.0), deviation),
     ]
 }
 
@@ -350,6 +357,40 @@ fn a_backdrop_over_animating_content_is_redrawn_without_smearing() {
         .is_full(),
         "the fixture must exercise a partial redraw, not fall back to the whole surface"
     );
+}
+
+#[test]
+fn a_backdrop_with_a_small_or_zero_blur_is_redrawn_without_a_seam() {
+    // A blur resamples through a half-resolution target, which reads two device pixels past its
+    // kernel. A small blur reaches less than that, and a blur of zero has no kernel at all, so
+    // these are the deviations where the read extent must count the resampling or skip the blur.
+    for deviation in [0.0, 0.2] {
+        let Some((mut tracked, mut whole_surface)) = support::renderer_pair() else {
+            return;
+        };
+        let mut items = frosted_over_animating_content(0, deviation);
+        present(&mut tracked, &build(&items));
+        present(&mut whole_surface, &build(&items));
+        for step in 1..8 {
+            let previous = items.clone();
+            items = frosted_over_animating_content(step, deviation);
+            let damaged = draw_damaged(&mut tracked, &previous, &items);
+            let full = present(&mut whole_surface, &build(&items));
+            assert_eq!(
+                damaged.max_difference(&full),
+                0,
+                "blur({deviation}), step {step}: the partial frame differs from the whole frame"
+            );
+        }
+        assert!(
+            !damage_between(
+                &frosted_over_animating_content(6, deviation),
+                &frosted_over_animating_content(7, deviation)
+            )
+            .is_full(),
+            "the fixture must exercise a partial redraw"
+        );
+    }
 }
 
 #[test]
@@ -635,4 +676,130 @@ fn a_frame_the_renderer_widens_paints_a_union_overlap_once() {
         overlap.abs_diff(single) <= 1,
         "the overlap paints alpha once ({overlap}), as one disc does ({single}), never twice"
     );
+}
+
+/// A half-transparent square drawn through a group, under a coordinate system shifted by `shift`,
+/// or drawn at the shifted place with no coordinate system at all when `flat`.
+fn isolated(shift: f32, flat: bool) -> Scene {
+    let mut scene = Scene::new();
+    scene.begin_frame(Size::new(SIDE, SIDE));
+    let white = scene
+        .paints
+        .add(zgui_scene::Paint::Solid(opaque(255, 255, 255)));
+    scene.push_quad(Quad::filled(
+        rect(0.0, 0.0, SIDE as f32, SIDE as f32),
+        white,
+    ));
+    let red = scene
+        .paints
+        .add(zgui_scene::Paint::Solid(opaque(200, 30, 30)));
+    let (offset, space) = if flat {
+        (shift, None)
+    } else {
+        let owner = zgui_scene::PropertyOwner::new(9).expect("a handle");
+        let own = zgui_scene::OwnSpace::of(
+            Some(zgui_geom::Matrix4::translation(shift, 0.0, 0.0)),
+            None,
+            false,
+        );
+        let viewport = scene.spatial.viewport();
+        (0.0, Some(scene.spatial.space_of(viewport, owner, own)))
+    };
+    let bounds = rect(20.0 + offset, 20.0, 30.0, 30.0);
+    let mut group = GroupBoundary::start(
+        bounds,
+        0.5,
+        zgui_scene::peniko::BlendMode::default(),
+        Default::default(),
+    );
+    group.transform = space;
+    scene.push_group(group.clone());
+    let mut quad = Quad::filled(bounds, red);
+    if let Some(space) = space {
+        quad = quad.transformed(space);
+    }
+    scene.push_quad(quad);
+    scene.push_group(group.end());
+    scene.finish(&DamageSet::full());
+    scene
+}
+
+#[test]
+fn a_group_is_composited_where_its_coordinate_system_now_is() {
+    // A group's bounds are in its own coordinate system, so a write that moves the system moves
+    // the region the group is drawn and composited over with it. Read on the device as they were
+    // emitted, they cut the content off where the system has moved away from.
+    let Some((mut moved, mut flat)) = support::renderer_pair() else {
+        return;
+    };
+    for shift in [0.0, 6.0, 40.0] {
+        let drawn = present(&mut moved, &isolated(shift, false));
+        let expected = present(&mut flat, &isolated(shift, true));
+        assert_eq!(
+            drawn.max_difference(&expected),
+            0,
+            "shifted by {shift}: the group under the system differs from the group drawn there"
+        );
+    }
+}
+
+/// Stripes under a blurring panel, drawn under a coordinate system shifted by `shift`, or drawn at
+/// the shifted place with no coordinate system at all when `flat`.
+fn frosted_in_space(shift: f32, flat: bool) -> Scene {
+    let mut scene = Scene::new();
+    scene.begin_frame(Size::new(SIDE, SIDE));
+    let white = scene
+        .paints
+        .add(zgui_scene::Paint::Solid(opaque(255, 255, 255)));
+    scene.push_quad(Quad::filled(
+        rect(0.0, 0.0, SIDE as f32, SIDE as f32),
+        white,
+    ));
+    let black = scene.paints.add(zgui_scene::Paint::Solid(opaque(0, 0, 0)));
+    for stripe in 0..(SIDE / 8) {
+        scene.push_quad(Quad::filled(
+            rect(stripe as f32 * 8.0, 0.0, 4.0, SIDE as f32),
+            black,
+        ));
+    }
+    let (offset, space) = if flat {
+        (shift, None)
+    } else {
+        let owner = zgui_scene::PropertyOwner::new(9).expect("a handle");
+        let own = zgui_scene::OwnSpace::of(
+            Some(zgui_geom::Matrix4::translation(shift, 0.0, 0.0)),
+            None,
+            false,
+        );
+        let viewport = scene.spatial.viewport();
+        (0.0, Some(scene.spatial.space_of(viewport, owner, own)))
+    };
+    scene.push_backdrop(
+        BackdropFilter::new(
+            rect(12.0 + offset, 12.0, 24.0, 24.0),
+            [Filter::Blur(3.0)].into_iter().collect(),
+        )
+        .in_space(space),
+    );
+    scene.finish(&DamageSet::full());
+    scene
+}
+
+#[test]
+fn a_backdrop_is_drawn_where_its_coordinate_system_now_is() {
+    // A backdrop's rectangles are in its own coordinate system, so a write that moves the system
+    // moves what the filter reads and writes with it. Read on the device as they were emitted,
+    // they blur the place the system has moved away from.
+    let Some((mut moved, mut flat)) = support::renderer_pair() else {
+        return;
+    };
+    for shift in [0.0, 6.0, 20.0] {
+        let drawn = present(&mut moved, &frosted_in_space(shift, false));
+        let expected = present(&mut flat, &frosted_in_space(shift, true));
+        assert_eq!(
+            drawn.max_difference(&expected),
+            0,
+            "shifted by {shift}: the backdrop under the system differs from the backdrop drawn there"
+        );
+    }
 }

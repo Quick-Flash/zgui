@@ -291,6 +291,8 @@ impl Window {
         mark("f.commands");
         self.binding.checkpoint();
         self.carry_out_commands(timestamp);
+        // Before the restyle, so a secure field's text is masked before anything shapes it.
+        self.apply_secure_changes();
         // After the flush, which is where a finished decode's task pushed its result, and before
         // the line below that closes the frame's window for producing changes: a picture that
         // landed during this frame's own flush is shown by this frame, one settle later. A settle
@@ -383,6 +385,7 @@ impl Window {
         self.dispatch_scroll(timestamp);
         mark("f.observe");
         let observed = self.deliver_observations();
+        self.forget_carried_scrolls();
         // A second settle, for what the scroll and observation deliveries produced: both flush
         // and relayout mid-frame precisely so a virtualised list renders this frame's rows, and
         // rows born that way write their `src` after the first settle has run. Without this, each
@@ -466,6 +469,11 @@ impl Window {
                 self.damage.absorb(owed);
                 self.layers_inherited.push(owed);
             }
+            self.request_frame();
+        }
+        // A scroll a view asked for after this frame's last layout pass, from a handler that ran
+        // late in the frame, is kept for the next frame's layout pass.
+        if self.owes_scrolls() {
             self.request_frame();
         }
         if matches!(outcome, zgui_render::FrameOutcome::Recovered) {
@@ -1245,6 +1253,9 @@ impl Window {
         if relaid_out {
             self.clamp_scroll_to_content();
         }
+        // After the clamp, so a scroll is measured against the extents this pass produced, and
+        // before the fragment pass, which composes what it moves.
+        self.carry_out_owed_scrolls();
         zgui_profile::latency::note_with("w.laidout", || {
             format!(
                 "asked={width}x{height} scale={} surface={}x{} ran={relaid_out}",
@@ -1490,9 +1501,9 @@ impl Window {
                 // coverage has no meaning there: the paint demotes it to ordinary coverage.
                 opaque_surface: !self.translucent,
                 anim: &*document,
-                // The bars are chrome rather than content, so nothing in the document cascades to
-                // them; what they follow is the scheme the window is presented in, which is the
-                // same input the sheet's own dark rules are matched against.
+                // The paint for bars whose scroll container names no single `color-scheme`: the
+                // scheme the window is presented in, which is the same input the sheet's own dark
+                // rules are matched against. A container's scheme and colours override it.
                 scrollbars: zgui_paint::emit::scrollbar::paint_for(
                     self.scheme == zgui_style::ColorScheme::Dark,
                 ),

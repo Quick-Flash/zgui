@@ -37,7 +37,10 @@ use crate::wake::RuntimeWaker;
 /// It is a queue rather than an immediate effect because every one of these can be issued from
 /// inside an event handler, and an event handler runs inside an open batch of changes to the
 /// document. Applying a focus move there would re-enter a change that has not finished.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// The debug form of [`Command::SetValue`] gives the length of the text and not the text, because
+/// the text can be a password.
+#[derive(Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Command {
     /// Move focus to this node, or take focus away when there is none.
@@ -99,6 +102,67 @@ pub enum Command {
         /// Which event.
         event: zgui_vocab::EventKind,
     },
+}
+
+impl core::fmt::Debug for Command {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Focus(node) => formatter.debug_tuple("Focus").field(node).finish(),
+            Self::Scroll {
+                node,
+                target,
+                behavior,
+            } => formatter
+                .debug_struct("Scroll")
+                .field("node", node)
+                .field("target", target)
+                .field("behavior", behavior)
+                .finish(),
+            Self::CapturePointer(node) => {
+                formatter.debug_tuple("CapturePointer").field(node).finish()
+            }
+            Self::InstallStylesheet { name, css } => formatter
+                .debug_struct("InstallStylesheet")
+                .field("name", name)
+                .field("css", css)
+                .finish(),
+            Self::RemoveStylesheet { name } => formatter
+                .debug_struct("RemoveStylesheet")
+                .field("name", name)
+                .finish(),
+            Self::FreezeScrolling(frozen) => formatter
+                .debug_tuple("FreezeScrolling")
+                .field(frozen)
+                .finish(),
+            Self::ReleasePointer(node) => {
+                formatter.debug_tuple("ReleasePointer").field(node).finish()
+            }
+            Self::Select { node, range } => formatter
+                .debug_struct("Select")
+                .field("node", node)
+                .field("range", range)
+                .finish(),
+            Self::SetValue { node, text } => formatter
+                .debug_struct("SetValue")
+                .field("node", node)
+                .field("text", &Redacted(text.len()))
+                .finish(),
+            Self::Synthesize { node, event } => formatter
+                .debug_struct("Synthesize")
+                .field("node", node)
+                .field("event", event)
+                .finish(),
+        }
+    }
+}
+
+/// Text in a debug form, given as its length in bytes.
+pub(crate) struct Redacted(pub(crate) usize);
+
+impl core::fmt::Debug for Redacted {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(formatter, "<{} bytes>", self.0)
+    }
 }
 
 /// The production [`ViewHost`]: the running engines, seen from a view.
@@ -732,9 +796,11 @@ impl ViewHost for RuntimeHost {
         };
         let length = self.text_length(key);
         self.selections.set(key, 0..length, length);
+        // To the end of the model's text, which the model finds when the command lands: the
+        // document's length counts the bullets of a secure field.
         self.issue(Command::Select {
             node,
-            range: 0..length,
+            range: 0..usize::MAX,
         });
     }
 
@@ -834,5 +900,43 @@ fn translate(direction: FocusMove) -> zgui_input::FocusDirection {
         // A direction this build has never heard of moves focus forwards, which is what every
         // traversal a component writes means by "onwards".
         _ => zgui_input::FocusDirection::Next,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Command;
+
+    #[test]
+    fn a_loaded_value_is_debugged_as_its_length() {
+        let node = zgui_view::NodeId::from_u64(1 << 32 | 3).expect("a live handle");
+        let command = Command::SetValue {
+            node,
+            text: "hunter2".to_owned(),
+        };
+        let printed = format!("{command:?}");
+        assert!(!printed.contains("hunter2"), "{printed}");
+        assert!(printed.contains("<7 bytes>"), "{printed}");
+        assert!(printed.starts_with("SetValue"), "{printed}");
+        assert_eq!(
+            format!("{:?}", Command::FreezeScrolling(true)),
+            "FreezeScrolling(true)"
+        );
+    }
+
+    #[test]
+    fn an_edit_is_debugged_without_its_text() {
+        let edited = crate::editing::Edited {
+            handled: true,
+            clipboard: Some("hunter2".to_owned()),
+            value: Some("hunter2!".to_owned()),
+            ..Default::default()
+        };
+        let printed = format!("{edited:?}");
+        assert!(!printed.contains("hunter2"), "{printed}");
+        assert!(
+            printed.contains("<7 bytes>") && printed.contains("<8 bytes>"),
+            "{printed}"
+        );
     }
 }

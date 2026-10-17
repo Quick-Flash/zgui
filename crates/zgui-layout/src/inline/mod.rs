@@ -20,6 +20,7 @@
 //! | [`floats`] | how wide each line is allowed to be |
 //! | [`baseline`] | which line a parent aligns the whole context by |
 //! | [`resolved`] | what the context came out at, for everything that reads layout afterwards |
+//! | [`slices`] | where each nested inline box lands on each line, for painting |
 //! | [`atomic`] | the nested layout an `inline-block` costs, and the memo without which it is ruinous |
 //!
 //! Flattening the tree into the string a shaper takes, sizing what is on the line that is not a
@@ -33,10 +34,12 @@ pub(crate) mod content;
 pub mod ellipsis;
 pub mod floats;
 pub(crate) mod insets;
+pub mod kept;
 pub mod leaf_shell;
 pub mod lines;
 pub(crate) mod measure;
 pub mod resolved;
+pub mod slices;
 pub mod strut;
 pub mod vertical_align;
 
@@ -59,6 +62,7 @@ use crate::tree::LayoutTree;
 /// Two very different things arrive here. An inline formatting context is laid out in full, because
 /// its size *is* the lines it broke into. Replaced content — an image, a video, an embedded surface
 /// — is asked of whoever is driving the pass, because this engine does not own it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_leaf<C: MeasureContent>(
     tree: &mut LayoutTree<'_, C>,
     node: NodeId,
@@ -66,20 +70,19 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
     available: Size<cephal::AvailableSpace>,
     run_mode: RunMode,
     axis: RequestedAxis,
+    basis_height: Option<f32>,
     block: Option<&mut BlockContext<'_>>,
 ) -> Measured {
     let key = from_node_id(node);
+    // A speculative pass asks for a whole layout to read a baseline or a float's extent from it,
+    // and the engine keeps none of it. Its answer is a probe here, so it writes nothing.
+    let final_pass =
+        run_mode == RunMode::PerformLayout && cephal::tree::CacheAccess::speculation(tree) == 0;
     if tree.structure().node(key).fc == FormattingContext::Custom {
         // A custom element's measurement is the trait's, not the measurer's: the source was
         // installed on the pass, and the shell arithmetic around this call applies to its answer
         // exactly as it applies to a replaced box's.
-        return crate::custom::measure(
-            tree,
-            key,
-            known,
-            available,
-            run_mode == RunMode::PerformLayout,
-        );
+        return crate::custom::measure(tree, key, known, available, final_pass);
     }
     if tree.structure().node(key).fc == FormattingContext::Inline {
         return measure::compute(
@@ -90,7 +93,8 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
                 available,
                 run_mode,
                 axis,
-                final_pass: run_mode == RunMode::PerformLayout,
+                final_pass,
+                basis_height,
             },
             block,
         );
@@ -108,7 +112,7 @@ pub(crate) fn measure_leaf<C: MeasureContent>(
         available,
         natural,
         scale,
-        final_pass: run_mode == RunMode::PerformLayout,
+        final_pass,
     })
 }
 

@@ -230,6 +230,47 @@ fn every_group_marker_is_matched() {
     assert_eq!(starts, ends, "every group opened has to be closed");
 }
 
+/// How many groups a box over a `multiply` child opens, with `parent` declared on the box.
+fn groups_over_a_blending_child(parent: &str) -> usize {
+    let mut harness = Harness::new(
+        Element::new("root").children(vec![
+            Element::new("card").children(vec![Element::new("inner")]),
+        ]),
+        &format!(
+            "root {{ display: block; width: 300px }}
+             card {{ display: block; height: 60px; {parent} }}
+             inner {{ display: block; height: 20px; background: #333; mix-blend-mode: multiply }}"
+        ),
+    );
+    harness.paint_everything();
+    harness
+        .scene
+        .primitives
+        .groups
+        .iter()
+        .filter(|marker| marker.is_start)
+        .count()
+}
+
+#[test]
+fn a_filter_that_changes_no_pixel_still_isolates_a_blending_child() {
+    // `blur(0)` is an identity, so the chain it lowers to is empty. It still declares a filter,
+    // and a filter isolates what blends below it: without a group of its own the child blends
+    // with whatever is behind the card.
+    let plain = groups_over_a_blending_child("");
+    assert_eq!(
+        plain, 1,
+        "the control: the child opens its own group and nothing else does"
+    );
+    for declaration in ["filter: blur(0)", "backdrop-filter: blur(0)"] {
+        assert_eq!(
+            groups_over_a_blending_child(declaration),
+            plain + 1,
+            "`{declaration}` opened no group around the blending child"
+        );
+    }
+}
+
 #[test]
 fn an_outline_is_drawn_over_the_boxs_own_descendants() {
     // Appendix E step ten. A box's outline sorts above its children's content, and a stage that
@@ -397,13 +438,17 @@ fn the_emit_walk_and_the_hit_index_agree_about_painting_order() {
     // two from drifting apart in a way that shows up only as a click landing on the wrong element.
     let mut harness = Harness::sized(
         Element::new("root").children(vec![
+            Element::new("absolute"),
             Element::new("under").classes(&["back"]),
             Element::new("mid").children(vec![Element::new("relative")]),
             Element::new("over").classes(&["front"]),
             Element::new("floated"),
+            Element::new("late"),
         ]),
         "root { display: block; width: 300px; height: 400px; position: relative; z-index: 0 }
          under, mid, over, floated { display: block; height: 40px; background: #eee }
+         absolute { display: block; position: absolute; inset: 0; background: #888 }
+         late { display: block; height: 40px; position: relative; background: #555 }
          .back { position: relative; z-index: -1 }
          .front { position: relative; z-index: 3 }
          relative { display: block; height: 20px; position: relative; background: #333 }
@@ -433,6 +478,15 @@ fn the_emit_walk_and_the_hit_index_agree_about_painting_order() {
         painted, expected,
         "the walk that emits and the walk that indexes hits put the boxes in different orders"
     );
+    // The absolute box is re-parented onto the root's layout list, and still paints in tree order.
+    let at = |name| {
+        let key = harness.box_of(name);
+        painted
+            .iter()
+            .position(|held| *held == key)
+            .expect("painted")
+    };
+    assert!(at("absolute") < at("late"));
 }
 
 #[test]
@@ -528,4 +582,60 @@ fn emit_and_hit_agree_on_the_same_matrix() {
         !answers(&harness, 120.0),
         "and stops answering where the previous frame drew it",
     );
+}
+
+#[test]
+fn a_backdrop_is_cut_to_the_rounded_border_box_in_the_space_of_its_box() {
+    // A frosted card with round corners frosts only inside them, as its background does. The cut
+    // is measured in the box's own coordinate system, so a transform moves it with the box.
+    let mut harness = Harness::new(
+        Element::new("root").children(vec![Element::new("card")]),
+        "root { display: block; width: 300px }
+         card { display: block; height: 80px; margin: 20px; border-radius: 12px;
+                transform: translateX(10px); backdrop-filter: blur(8px) }",
+    );
+    harness.paint_everything();
+    let scene = harness.scene();
+    let backdrop = scene
+        .primitives
+        .backdrops
+        .first()
+        .expect("the card frosts what is beneath it");
+    let card = harness
+        .store()
+        .fragment(harness.fragment_of("card"))
+        .expect("the card has a fragment");
+    let Some(zgui_scene::ClipNode::Link { link, parent, .. }) = scene.clips.get(backdrop.clip)
+    else {
+        panic!("the backdrop has a clip of its own");
+    };
+    assert_eq!(
+        *parent, card.clip,
+        "inside the chain the card is clipped by"
+    );
+    assert!(link.is_rounded(), "with the card's round corners");
+    let zgui_scene::ClipLink::RoundedRect { rect, space, .. } = link else {
+        panic!("a rounded rectangle");
+    };
+    assert_eq!(*rect, card.border_box);
+    assert_eq!(
+        Some(*space),
+        card.transform,
+        "in the card's own coordinate system"
+    );
+}
+
+#[test]
+fn a_square_backdrop_keeps_the_clip_of_its_box() {
+    let mut harness = Harness::new(
+        Element::new("root").children(vec![Element::new("card")]),
+        "root { display: block; width: 300px }
+         card { display: block; height: 80px; backdrop-filter: blur(8px) }",
+    );
+    harness.paint_everything();
+    let card = harness
+        .store()
+        .fragment(harness.fragment_of("card"))
+        .expect("the card has a fragment");
+    assert_eq!(harness.scene().primitives.backdrops[0].clip, card.clip);
 }

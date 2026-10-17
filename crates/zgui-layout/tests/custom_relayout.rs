@@ -71,3 +71,46 @@ fn a_moved_layout_revision_throws_the_custom_box_s_layout_away() {
     );
     assert!(is_dirty(&store, box_), "the held answer is gone");
 }
+
+#[test]
+fn a_new_token_rebuilds_the_custom_box_with_the_new_owner() {
+    let mut fixture = Fixture::new(
+        Element::new("root").children(vec![Element::new("meter")]),
+        "root { display: block; width: 400px }
+         meter { display: block; height: 20px }",
+    );
+    let root = fixture.root;
+    let meter = fixture
+        .document
+        .store()
+        .core(root)
+        .first_child()
+        .expect("the meter");
+    let mut store = fixture.box_tree();
+    let set = |fixture: &mut Fixture, store: &mut _, token: u32| {
+        fixture.edit_and_sync_boxes(store, |edit| {
+            edit.set_property(
+                meter,
+                PropKey::new(custom::ELEMENT),
+                Some(PropValue::Integer(custom::reference(token, 0, 0))),
+            );
+        });
+    };
+    set(&mut fixture, &mut store, 7);
+    let key = fixture.document.store().key_of(meter);
+    let reference = |store: &zgui_layout::tree::store::LayoutStore| {
+        store
+            .boxes_of(key)
+            .first()
+            .and_then(|box_| store.custom_reference(*box_))
+    };
+    assert_eq!(reference(&store), Some((7, 0, 0)));
+
+    // A reactive hole built the element again in place: same node, another implementation.
+    set(&mut fixture, &mut store, 8);
+    assert_eq!(
+        reference(&store),
+        Some((8, 0, 0)),
+        "the box still names the old implementation"
+    );
+}

@@ -98,6 +98,9 @@ counters! {
     /// Paragraphs broken into lines again while reusing the shaping they already had.
     TextRebroken => text_rebroken, Group::BackendNeutral;
 
+    /// Shaped paragraphs broken back to their kept lines after a size probe moved them.
+    TextFormsRestored => text_forms_restored, Group::BackendNeutral;
+
     /// Fragments compared against their previous geometry.
     FragmentsDiffed => fragments_diffed, Group::BackendNeutral;
 
@@ -109,6 +112,9 @@ counters! {
 
     /// Elements that took a moved custom property map into their style without a cascade.
     CustomMapsRefreshed => custom_maps_refreshed, Group::BackendNeutral;
+
+    /// Elements whose animations took new keyframe values because a custom property they read moved.
+    KeyframesRefreshed => keyframes_refreshed, Group::BackendNeutral;
 
     /// Fragments whose paint operations were emitted afresh instead of replayed from cache.
     Repaints => repaints, Group::BackendNeutral;
@@ -218,6 +224,12 @@ counters! {
     /// Nothing else observes how large the scene the paint stage builds actually is, which is what
     /// makes a scene rebuild that has quietly become the dominant cost visible at all.
     BoundsTreeInserts => bounds_tree_inserts, Group::BackendNeutral;
+
+    /// Rounded clip tests that change pixels and could not be applied.
+    ///
+    /// One draw call applies two rounded tests. A clip chain with three or more that each cut a
+    /// corner inside the clipped area keeps the two innermost and draws the rest square.
+    ClipRoundedTestsDropped => clip_rounded_tests_dropped, Group::BackendNeutral;
 
     /// Hit-test entries updated in place.
     HitEntriesUpdated => hit_entries_updated, Group::BackendNeutral;

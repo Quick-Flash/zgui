@@ -61,7 +61,8 @@ impl Window {
         let editable = crate::editing::Editors::is_editable(&document, node);
         // The model's own selection, not the record beside it: the record is a byte range and has
         // forgotten which end the caret is at and which of the two places a boundary offset means.
-        let Some(selection) = self.editors.selection(node) else {
+        // In the offsets of the text the document holds, which are the bullets of a secure field.
+        let Some(selection) = self.editors.shown_selection(node) else {
             return (Plan::empty(), Vec::new());
         };
         let layout = self.layout.borrow();
@@ -188,7 +189,8 @@ impl Window {
     ) -> Option<(usize, zgui_edit::Affinity)> {
         let layout = self.layout.borrow();
         let located = Located::of(&layout, &self.text, node)?;
-        located.hit(point, &self.scene.spatial)
+        let (shown, affinity) = located.hit(point, &self.scene.spatial)?;
+        Some((self.editors.to_model(node, shown), affinity))
     }
 
     /// The paragraph an editable element's lines belong to, for a caller inspecting the plan.
