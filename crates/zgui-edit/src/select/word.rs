@@ -12,8 +12,8 @@
 //! * a step backwards is its mirror: skip any space, then the run of one class.
 //!
 //! A component that needs a different rule computes its own boundaries and moves the selection to
-//! them. Word-granularity motion uses [`next`] and [`previous`]; pointer selection
-//! uses [`at`] without consuming the trailing space.
+//! them. Word-granularity motion uses [`next`] and [`previous`]. A double press selects the run
+//! that [`at`] finds, which stops before the space after a word.
 
 /// What kind of character something is, as far as word motion is concerned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,11 +37,11 @@ fn class(character: char) -> Class {
     }
 }
 
-/// The word, punctuation run, or whitespace run under one reading of an offset.
+/// The run of word characters, punctuation or space under one reading of an offset.
 ///
-/// Unlike word motion, selection does not consume trailing spaces. Affinity chooses
-/// the character that was hit when the caret lies between two runs. Grapheme steps
-/// keep combining marks and joined emoji together, including at a trailing edge.
+/// The run stops before the space after a word. When the offset is between two runs, the
+/// affinity chooses the run: upstream the one before, downstream the one after. The run
+/// boundaries are grapheme boundaries, so a combining mark or a joined emoji stays whole.
 pub fn at(text: &str, offset: usize, affinity: super::Affinity) -> core::ops::Range<usize> {
     use super::{Affinity, grapheme};
     if text.is_empty() {

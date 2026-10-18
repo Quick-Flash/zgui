@@ -12,7 +12,7 @@ use zgui_ui::prelude::*;
 use zgui_ui_tokens::prelude::*;
 
 #[test]
-fn controlled_input_and_uncontrolled_textarea_select_words_and_lines() {
+fn controlled_input_and_uncontrolled_textarea_select_words_and_paragraphs() {
     let built = Rc::new(RefCell::new(Vec::new()));
     let model = Rc::clone(&built);
     let changes = Rc::new(Cell::new(0));
@@ -38,7 +38,7 @@ fn controlled_input_and_uncontrolled_textarea_select_words_and_lines() {
             DevicePx(rect.origin.x.0 + rect.size.width.0 - 12.0),
             DevicePx(rect.origin.y.0 + rect.size.height.0 - 12.0),
         );
-        let (end, word, line) = if index == 0 {
+        let (end, word, paragraph) = if index == 0 {
             (10, 6..10, 0..10)
         } else {
             (20, 16..20, 11..20)
@@ -48,7 +48,7 @@ fn controlled_input_and_uncontrolled_textarea_select_words_and_lines() {
         stage.click(point);
         assert_eq!(node.selection(), Some(word));
         stage.click(point);
-        assert_eq!(node.selection(), Some(line));
+        assert_eq!(node.selection(), Some(paragraph));
     }
     assert_eq!(
         changes.get(),

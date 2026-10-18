@@ -45,8 +45,8 @@ const SHEET: &str = "zui-textarea";
 ///
 /// # Pointer selection
 ///
-/// The framework selects a word on double-click and a rendered line on triple-click.
-/// Dragging after either extends the selection by words or lines, respectively.
+/// A double click selects a word and a triple click selects the paragraph. A drag after either
+/// extends the selection by words or by paragraphs.
 #[component]
 pub fn Textarea(
     /// The text, when the caller holds it.

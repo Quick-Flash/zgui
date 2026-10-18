@@ -61,10 +61,10 @@ const SHEET: &str = "zui-input";
 /// # Secure
 ///
 /// Give `secure` for a password. While it is `true`, the field shows one bullet per character,
-/// copy and cut do nothing, word movement goes to the ends of the field, an input method is asked
-/// for a password, and a reader is told it is a password field. The value reaches the caller
-/// through `value` and `on_change` only. Set it to `false` to reveal the value in place: the caret,
-/// the selection and undo stay as they are.
+/// copy and cut do nothing, word movement goes to the ends of the field, a double click selects
+/// the whole value, an input method is asked for a password, and a reader is told it is a password
+/// field. The value reaches the caller through `value` and `on_change` only. Set it to `false` to
+/// reveal the value in place: the caret, the selection and undo stay as they are.
 ///
 /// ```
 /// use zgui::prelude::*;
@@ -111,8 +111,8 @@ const SHEET: &str = "zui-input";
 ///
 /// # Pointer selection
 ///
-/// The framework selects a word on double-click and a rendered line on triple-click.
-/// Dragging after either extends the selection by words or lines, respectively.
+/// A double click selects a word, and a drag after it extends the selection by words. A triple
+/// click selects the whole value.
 #[component]
 pub fn Input(
     /// The text, when the caller holds it.

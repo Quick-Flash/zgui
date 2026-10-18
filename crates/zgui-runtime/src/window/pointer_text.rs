@@ -5,9 +5,10 @@
 //! its own text interaction — a code editor with rectangular selection, a field that selects a whole
 //! token on click — cancels the press and gets the whole gesture to itself.
 //!
-//! Single presses place a caret, double presses select the word/punctuation/space run,
-//! and triple presses select the rendered line. A drag extends by that same unit;
-//! releasing the pointer keeps the selection. Only primary presses participate.
+//! One press places the caret, two presses select the run of word characters, punctuation or
+//! space under the pointer, and three presses select the paragraph. A fourth press starts again
+//! with a caret. A drag after the press extends the selection by the same unit. Only primary
+//! presses select.
 //!
 //! The offset a press lands on is asked of the layout the frame produced, never of the string: the
 //! bytes of a line are drawn in the order shaping decided, which on a line holding two directions
@@ -18,18 +19,21 @@ use zgui_geom::{Device, DevicePx, Point};
 use zgui_platform::SurfaceEvent;
 use zgui_vocab::{PointerAction, PointerButton, PointerEvent, Timestamp};
 
+use crate::window::Window;
+
 mod clicks;
 pub(super) use clicks::TextClicks;
 
-/// The unit a text-selection drag extends by.
+/// The unit a press selects, and a drag after it extends the selection by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Unit {
+    /// One offset.
     Caret,
+    /// One run of word characters, punctuation or space.
     Word,
-    Line,
+    /// One paragraph.
+    Paragraph,
 }
-
-use crate::window::Window;
 
 /// A drag that is selecting text: the element it started in, and the offset it started at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,9 +42,9 @@ pub struct Selecting {
     pub node: NodeKey,
     /// The offset the press landed on, which the selection is anchored to for the whole drag.
     pub anchor: usize,
-    /// The other end of the initially selected word or line.
+    /// The other end of the run or paragraph the press selected.
     end: usize,
-    /// Latched when pressed so drags extend whole words or whole rendered lines.
+    /// What the press selected, which the drag extends by.
     unit: Unit,
 }
 
@@ -90,7 +94,7 @@ impl Window {
         target: Option<NodeKey>,
         timestamp: Timestamp,
     ) -> bool {
-        // Legacy mouse events may omit button identity; secondary/middle presses never select.
+        // A press with no button is a primary press. A secondary or middle press selects nothing.
         if pointer
             .button
             .is_some_and(|button| button != PointerButton::Primary)
@@ -117,7 +121,7 @@ impl Window {
         let count = self.text_clicks.note(node, timestamp, pointer.position);
         let unit = match count {
             2 => Unit::Word,
-            3 => Unit::Line,
+            3 => Unit::Paragraph,
             _ => Unit::Caret,
         };
         if unit == Unit::Caret {
@@ -129,7 +133,7 @@ impl Window {
             });
             return self.write_caret(node, offset, offset, affinity);
         }
-        // Attach/synchronize the editor before asking its current text for word boundaries.
+        // Placing the caret attaches the model, and the run or paragraph comes from its text.
         if !self.write_caret(node, offset, offset, affinity) {
             return false;
         }
@@ -142,7 +146,7 @@ impl Window {
             end: range.end,
             unit,
         });
-        // Expanded selection ends before the next run/soft-wrapped line.
+        // The selection ends at the end of its run or paragraph, before the next one.
         let focus_affinity = if range.is_empty() {
             affinity
         } else {
@@ -186,7 +190,7 @@ impl Window {
         self.write_caret(drag.node, anchor, focus, focus_affinity)
     }
 
-    /// Expands a pointer's hit using model words or the frame's actual rendered lines.
+    /// The run or paragraph of the model's text that holds a pointer's offset.
     fn selection_unit(
         &self,
         node: NodeKey,
@@ -197,10 +201,7 @@ impl Window {
         match unit {
             Unit::Caret => Some(offset..offset),
             Unit::Word => self.editors.word_at(node, offset, affinity),
-            Unit::Line => {
-                let layout = self.layout.borrow();
-                crate::caret::Located::of(&layout, &self.text, node)?.line_range(offset, affinity)
-            }
+            Unit::Paragraph => self.editors.paragraph_at(node, offset),
         }
     }
 

@@ -6,7 +6,8 @@ use zgui_geom::{CssPx, Point};
 use zgui_platform::SurfaceEvent;
 use zgui_view::{BuildCx, IntoView, NodeRef, View};
 use zgui_vocab::{
-    KeyEvent, KeyState, Modifiers, PointerAction, PointerButton, PointerEvent, Timestamp, UiState,
+    KeyCode, KeyEvent, KeyState, Modifiers, NamedKey, PhysicalKey, PointerAction, PointerButton,
+    PointerEvent, Timestamp, UiState,
 };
 
 type Harness = zgui_platform_headless::Harness<zgui_runtime::Runtime>;
@@ -84,7 +85,7 @@ fn location(app: &Harness, column: f32, line: usize) -> (f32, f32) {
 }
 
 #[test]
-fn double_selects_word_triple_selects_line_and_typing_replaces_selection() {
+fn double_selects_word_triple_selects_paragraph_and_typing_replaces_selection() {
     let (mut app, node) = field("one two three", 300, false);
     let (x, y) = location(&app, 5.2, 0);
     click(&mut app, x, y, 0);
@@ -159,33 +160,17 @@ fn word_drag_extends_whole_words_in_both_directions() {
 }
 
 #[test]
-fn triple_selection_uses_rendered_wrapped_line_and_drags_by_lines() {
-    let (mut app, node) = field("one two three four five six", 64, false);
+fn triple_selection_takes_the_paragraph_across_soft_wraps_and_drags_by_paragraphs() {
+    // The first paragraph wraps onto three lines at 64px; the second paragraph is 19..33.
+    let (mut app, node) = field("one two three four\nfive six seven", 64, false);
     let (x, y) = location(&app, 2.2, 1);
     for t in [0, 150, 300] {
         click(&mut app, x, y, t);
     }
-    let selected = node.selection().unwrap();
-    assert!(
-        selected.start > 0 && selected.end < 26,
-        "Only clicked wrapped line: {selected:?}"
-    );
-    point(
-        &mut app,
-        PointerAction::Pressed,
-        x,
-        y,
-        1000,
-        PointerButton::Primary,
-    );
-    point(
-        &mut app,
-        PointerAction::Released,
-        x,
-        y,
-        1010,
-        PointerButton::Primary,
-    );
+    assert_eq!(node.selection(), Some(0..18), "Whole first paragraph");
+    let last = support::line_boxes(&app.app().windows()[0]).len() - 1;
+    let (x, y) = location(&app, 2.2, last);
+    click(&mut app, x, y, 1000);
     click(&mut app, x, y, 1150);
     point(
         &mut app,
@@ -195,6 +180,7 @@ fn triple_selection_uses_rendered_wrapped_line_and_drags_by_lines() {
         1300,
         PointerButton::Primary,
     );
+    assert_eq!(node.selection(), Some(19..33), "Whole second paragraph");
     let (left, top) = location(&app, 1.2, 0);
     point(
         &mut app,
@@ -204,7 +190,73 @@ fn triple_selection_uses_rendered_wrapped_line_and_drags_by_lines() {
         1350,
         PointerButton::Primary,
     );
-    assert_eq!(node.selection(), Some(0..selected.end));
+    assert_eq!(node.selection(), Some(0..33));
+}
+
+#[test]
+fn a_key_pressed_during_a_drag_leaves_the_drag_live() {
+    let (mut app, node) = field("one two three", 300, false);
+    let (x, y) = location(&app, 0.2, 0);
+    point(
+        &mut app,
+        PointerAction::Pressed,
+        x,
+        y,
+        0,
+        PointerButton::Primary,
+    );
+    let (middle, _) = location(&app, 5.0, 0);
+    point(
+        &mut app,
+        PointerAction::Moved,
+        middle,
+        y,
+        50,
+        PointerButton::Primary,
+    );
+    app.deliver_to_first(SurfaceEvent::Key {
+        state: KeyState::Pressed,
+        event: KeyEvent::named(NamedKey::Shift, PhysicalKey::Code(KeyCode::ShiftLeft)),
+        modifiers: Modifiers::SHIFT,
+        timestamp: Timestamp::ORIGIN + Duration::from_millis(60),
+    });
+    app.settle(8);
+    let (far, _) = location(&app, 12.0, 0);
+    point(
+        &mut app,
+        PointerAction::Moved,
+        far,
+        y,
+        80,
+        PointerButton::Primary,
+    );
+    assert_eq!(node.selection(), Some(0..12));
+}
+
+#[test]
+fn a_double_click_in_a_secure_field_selects_the_whole_value() {
+    let node = NodeRef::new();
+    let css = "root {display:block;width:400px;height:300px;padding:12px 20px} field {display:block;width:300px} ";
+    let mut app = support::app_with_text(css, move |cx: &mut BuildCx<'_>| {
+        Box::new(
+            zgui_elements::column()
+                .class("root")
+                .child(
+                    zgui_elements::field()
+                        .node_ref(node)
+                        .secure(true)
+                        .child("correct horse"),
+                )
+                .into_view()
+                .build(cx),
+        )
+    });
+    app.settle(8);
+    let (x, y) = location(&app, 2.2, 0);
+    click(&mut app, x, y, 0);
+    click(&mut app, x, y, 150);
+    // A run would show where the value has a space.
+    assert_eq!(node.selection(), Some(0..13));
 }
 
 #[test]
@@ -326,6 +378,10 @@ fn multi_click_selection_uses_css_coordinates_at_fractional_and_retina_scales() 
         click(&mut app, x + 3.0, y, 150);
         assert_eq!(node.selection(), Some(4..7), "Word selection at {scale}x");
         click(&mut app, x + 2.0, y, 300);
-        assert_eq!(node.selection(), Some(0..13), "Line selection at {scale}x");
+        assert_eq!(
+            node.selection(),
+            Some(0..13),
+            "Paragraph selection at {scale}x"
+        );
     }
 }

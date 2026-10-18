@@ -155,7 +155,8 @@ impl Window {
                 ..
             } => {
                 self.focus_modality = zgui_input::FocusSource::Keyboard;
-                self.selecting = None;
+                // A key ends a run of text presses and leaves a drag live, so that a modifier
+                // pressed during a drag does not stop it.
                 self.text_clicks.forget();
             }
             SurfaceEvent::Pointer {
