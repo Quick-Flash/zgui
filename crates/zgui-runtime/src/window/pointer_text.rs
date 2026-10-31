@@ -166,7 +166,7 @@ impl Window {
             .as_ref()
             .map(|(_, time)| *time)
             .unwrap_or_else(std::time::Instant::now);
-        self.text_scroll = Some((pointer.clone(), previous));
+        self.text_scroll = Some((*pointer, previous));
         let Some((offset, affinity)) = self.offset_at(drag.node, self.device_point(pointer)) else {
             return false;
         };
@@ -280,7 +280,7 @@ impl Window {
             self.text_scroll = None;
             return;
         };
-        let Some((pointer, previous)) = self.text_scroll.clone() else {
+        let Some((pointer, previous)) = self.text_scroll else {
             return;
         };
         let Some(bounds) = zgui_view::ViewHost::window_box(
@@ -297,7 +297,7 @@ impl Window {
         } else {
             (x - right).max(0.0)
         };
-        self.text_scroll = Some((pointer.clone(), now));
+        self.text_scroll = Some((pointer, now));
         if overshoot == 0.0 {
             return;
         }
