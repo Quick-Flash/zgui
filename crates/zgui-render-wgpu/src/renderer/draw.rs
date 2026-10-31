@@ -288,6 +288,7 @@ impl Renderer for WgpuRenderer {
         // waits for the device to go idle, and everything above has just given it a frame's worth
         // of CPU time to become so; at the top of the frame the same call stalls on a submission
         // that was made moments earlier.
+        zgui_profile::latency::mark("r.reconfigure");
         self.presentation.apply_pending(&self.gpu);
 
         // Acquisition happens after every draw is recorded and immediately before the copy, so a
@@ -320,13 +321,18 @@ impl Renderer for WgpuRenderer {
         if let Some(timer) = &mut self.timer {
             timer.finish(&mut encoder);
         }
-        self.gpu.queue().submit([encoder.finish()]);
+        zgui_profile::latency::mark("r.finish");
+        let commands = encoder.finish();
+        zgui_profile::latency::mark("r.submit");
+        self.gpu.queue().submit([commands]);
         if let Some(timer) = &mut self.timer {
             timer.submitted();
         }
+        zgui_profile::latency::mark("r.retire");
         // Ties the frame's retired arena ranges to the submission just made, so they come back
         // only once nothing in flight can read them.
         self.buffers.chunks.submitted(&self.gpu);
+        zgui_profile::latency::mark("r.recall");
         self.buffers.recall_uploads();
         zgui_profile::latency::mark("sub.out");
 
