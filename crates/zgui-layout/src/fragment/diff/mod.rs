@@ -149,6 +149,7 @@ pub fn rebuild_in(
     // every frame that reports a scroll, which is every frame of a glide. What the frame damaged
     // before *any* pass ran is the caller's to remember, because only the caller knows which pass
     // was the first.
+    let bound = damage.bound();
     let mut pass = Pass {
         store,
         hit,
@@ -160,7 +161,7 @@ pub fn rebuild_in(
         renumber: false,
         born_order: None,
         anchors,
-        moves: RigidMoves::default(),
+        moves: RigidMoves::bounded(bound),
         // Read once, here, rather than once per moved subtree: how a frame is being measured is
         // decided before the frame and must not change part-way through one.
         passes: split::current(),
@@ -391,6 +392,14 @@ impl Default for RigidMoves {
 }
 
 impl RigidMoves {
+    /// No moves, with damage cut to `bound` as the pass's own damage set is.
+    fn bounded(bound: Option<Rect<i32, Device>>) -> Self {
+        let mut moves = Self::default();
+        moves.beyond.set_bound(bound);
+        moves.drawn.set_bound(bound);
+        moves
+    }
+
     /// Both passes' moves, for a frame that ran the walk more than once.
     ///
     /// A scroll delivered to a listener can re-render and relay out inside the same frame, so the
@@ -1873,7 +1882,11 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
         if let Some(fragment) = self.store.fragment_mut(frag) {
             fragment.kind = kind;
             fragment.parent = parent;
-            let kept = fragment.flags.intersection(FragmentFlags::FOLDED);
+            // The registry flag records membership, which `set_read_extent` below changes. A
+            // rebuild that drops it lists the fragment again.
+            let kept = fragment
+                .flags
+                .intersection(FragmentFlags::FOLDED.union(FragmentFlags::HAS_READ_EXTENT));
             fragment.border_box = next.border_box;
             fragment.border = next.border;
             fragment.padding = next.padding;
@@ -1958,7 +1971,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                 // Reported under the element the piece carries semantics for, not under the box's
                 // own source: a run of text is owed by its text node, and a text node is no
                 // accessibility node at all.
-                if self.dirty.is_semantic(node) {
+                if self.states_geometry(node) {
                     self.dirty.moved(node);
                 }
                 if let Some(previous) = &previous {
@@ -1982,7 +1995,7 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
                     || previous.as_ref().is_some_and(|previous| {
                         previous.kind == kind && geometry::only_geometry_differs(previous, next)
                     });
-                let a11y = if resized && self.dirty.is_semantic(node) {
+                let a11y = if resized && self.states_geometry(node) {
                     self.dirty.moved(node);
                     Dirty::empty()
                 } else {
@@ -2113,6 +2126,13 @@ impl<D: FrameDirty> Pass<'_, '_, D> {
             self.device_now(next.ink, next.anchor),
             reach,
         ))
+    }
+
+    /// Whether the accessibility node of `node` states geometry that a move of its piece changes:
+    /// its own rectangle when it declares what it means, or the transform its children are
+    /// measured from when it has element children.
+    fn states_geometry(&self, node: Option<zgui_dom::NodeKey>) -> bool {
+        self.dirty.is_semantic(node) || self.dirty.carries_children(node)
     }
 
     /// The accessibility bit a moved fragment owes, which is none unless its node means something.

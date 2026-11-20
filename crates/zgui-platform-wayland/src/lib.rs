@@ -11,6 +11,8 @@
 //!   never a lock: a surface with nothing owed answers a redraw in the same turn it was asked, and
 //!   a window whose frames do not fit the interval composes its next frame while the callback is
 //!   owed. That frame is held and presented on the callback, on the loop thread.
+//!   [`SurfaceAttributes::compose_ahead`](zgui_platform::SurfaceAttributes::compose_ahead) sets
+//!   this per window.
 //! * **Presentation that does not block.** The graphics API's own window-system integration
 //!   implements first-in-first-out presentation by waiting on those same callbacks. A surface the
 //!   compositor stops drawing receives none, so the acquisition blocks the thread that also reads
@@ -31,6 +33,8 @@
 //! | `frame` | when to draw: the callbacks, the timing, the visibility and the watchdog |
 //! | `output` | what is known about the outputs |
 //! | `cx` | the borrowed context handed to every callback |
+//! | `grab` | Hyprland's focus grab, from its vendored protocol description |
+//! | `lock` | the session lock and its lock surfaces |
 //! | `clock` | the monotonic clock, and the compositor's placed on it |
 //! | `waker` | how another thread reaches a parked loop |
 //! | `theme` | the desktop's light or dark preference |
@@ -112,7 +116,23 @@ pub mod frame;
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
+pub mod grab;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 pub mod input;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+pub mod lock;
 #[cfg(any(
     target_os = "linux",
     target_os = "dragonfly",

@@ -53,6 +53,9 @@ use crate::walk::order::{Emission, NoReplaced, ReplacedSource};
 use crate::walk::replay::hold::{NoResources, ResourceOwner};
 use crate::walk::replay::{Encoding, LayerRecord, PaintCache, Painted, Reuse};
 
+/// What the shape of a coordinate system is mixed with while an animation moves it.
+const IN_MOTION: u64 = 0x9e37_79b9_7f4a_7c15;
+
 pub use crate::walk::order::{NoReplaced as NoReplacedContent, ReplacedSource as ReplacedContent};
 
 /// Everything one emit walk reads.
@@ -61,6 +64,12 @@ pub struct PaintInput<'a> {
     pub store: &'a LayoutStore,
     /// The frozen damage set the walk is gated on.
     pub damage: &'a DamageSet,
+    /// The device rectangle of the surface, which bounds a full damage set.
+    ///
+    /// A full set holds no rectangles, so without this bound it reaches every fragment of the
+    /// document, also the rows of a scroll container far outside the window. With it, a full set
+    /// reaches what a set holding the whole surface reaches. `None` keeps a full set unbounded.
+    pub surface: Option<Rect<i32, Device>>,
     /// Where glyphs come from.
     pub glyphs: &'a dyn GlyphSource,
     /// Where a run a custom element shaped itself gets its tiles.
@@ -141,6 +150,7 @@ impl<'a> PaintInput<'a> {
         Self {
             store,
             damage,
+            surface: None,
             glyphs: &NoGlyphs,
             glyph_placements: &crate::emit::text::NoGlyphPlacements,
             highlights: &NoHighlights,
@@ -177,6 +187,8 @@ pub struct PaintReport {
     /// Whether [`PaintInput::record_emitted`] was on, so [`PaintReport::emitted`] is the whole list
     /// rather than an empty one nobody filled.
     pub recorded: bool,
+    /// The surface bound the walk applied to a full damage set: [`PaintInput::surface`].
+    pub surface: Option<Rect<i32, Device>>,
     /// Vector routes freshly encoded for elements this frame.
     ///
     /// A route-less entry is meaningful: a vector or custom element was encoded and emitted no
@@ -239,7 +251,7 @@ impl PaintReport {
                     continue;
                 }
                 let ink = fragment.device_ink(placements);
-                let reached = damage.is_full() || damage.intersects(pixels(ink));
+                let reached = damage_reaches(damage, self.surface, pixels(ink));
                 assert!(
                     !reached || self.emitted(*frag),
                     "the damage reaches {frag:?} at {ink:?} and nothing emitted for it"
@@ -247,6 +259,24 @@ impl PaintReport {
             }
         }
     }
+}
+
+/// Whether `damage` reaches `rect`, with a full set bounded by `surface`.
+///
+/// The walk and its completeness oracle share this test, so the two cannot disagree on what a
+/// full set reaches.
+fn damage_reaches(
+    damage: &DamageSet,
+    surface: Option<Rect<i32, Device>>,
+    rect: Rect<i32, Device>,
+) -> bool {
+    if !damage.is_full() {
+        return damage.intersects(rect);
+    }
+    // An empty rectangle stays reached, as it was before the bound: it covers no pixel of the
+    // surface or outside it, and what it stands for can still draw, such as a caret on an empty
+    // line.
+    rect.is_empty() || surface.is_none_or(|surface| surface.intersection(rect).is_some())
 }
 
 /// The paint stage's state between frames: the lowered styles, and what each fragment painted.
@@ -330,6 +360,7 @@ impl Painter {
         let Some(root) = input.store.root() else {
             return PaintReport {
                 recorded: input.record_emitted,
+                surface: input.surface,
                 ..self.report_of_nothing()
             };
         };
@@ -341,6 +372,7 @@ impl Painter {
             scene,
             report: PaintReport {
                 recorded: input.record_emitted,
+                surface: input.surface,
                 ..PaintReport::default()
             },
             root,
@@ -453,6 +485,17 @@ impl Painter {
         self.cache.evict(&picked, scene, owner)
     }
 
+    /// Drops the records of `fragments`, so the next frame whose damage reaches them encodes them
+    /// again, and reports how many went.
+    pub fn evict_records(
+        &mut self,
+        fragments: &[FragKey],
+        scene: &mut Scene,
+        owner: &dyn ResourceOwner,
+    ) -> usize {
+        self.cache.evict(fragments, scene, owner)
+    }
+
     /// Drops every record, releasing everything each one held into caches that survive.
     pub fn clear_records(&mut self, scene: &mut Scene, owner: &dyn ResourceOwner) {
         self.cache.clear_releasing(scene, owner);
@@ -523,7 +566,14 @@ impl Pass<'_, '_> {
         matrix.columns[3][0] = 0.0;
         matrix.columns[3][1] = 0.0;
         matrix.columns[3][2] = 0.0;
-        let hash = matrix.content_hash();
+        let mut hash = matrix.content_hash();
+        // A run of text under a slight scale is drawn from cached tiles while an animation moves
+        // the scale and from its outlines at rest. So a recording under a matrix that does more
+        // than move depends on whether an animation moves it, and one made in motion is not
+        // replayed at rest when the animation ends on the shape it started from.
+        if matrix != zgui_geom::Matrix4::IDENTITY && self.scene.travels(space) {
+            hash ^= IN_MOTION;
+        }
         self.shapes.insert(space, hash);
         hash
     }
@@ -614,7 +664,7 @@ impl Pass<'_, '_> {
 
     /// Whether the damage reaches `rect`.
     fn reaches(&self, rect: Rect<DevicePx, Device>) -> bool {
-        self.input.damage.is_full() || self.input.damage.intersects(pixels(rect))
+        damage_reaches(self.input.damage, self.input.surface, pixels(rect))
     }
 
     /// A rectangle widened to cover where its fragment is actually drawn.

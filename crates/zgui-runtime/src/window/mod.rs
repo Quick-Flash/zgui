@@ -13,7 +13,6 @@ pub mod caret;
 mod clicks;
 mod crossing;
 mod cursor;
-mod damage_coalesce;
 mod drag;
 pub mod frame;
 pub mod input;
@@ -23,6 +22,7 @@ pub mod present;
 pub mod probe;
 pub mod query;
 pub mod resize;
+mod reveal;
 pub mod scale;
 pub mod scheme;
 pub mod scroll;
@@ -30,12 +30,13 @@ mod secure;
 mod select;
 mod sheets;
 mod surface_focus;
+pub mod text_aa;
 mod value;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use zgui_bits::DamageSet;
 use zgui_dom::Document;
@@ -201,6 +202,15 @@ pub struct Window {
     /// deadline recomputed from the present moment is pushed forward by every wake the window has
     /// for any other reason. See [`AnimationCadence`](crate::AnimationCadence).
     animation: crate::window::anim::cadence::AnimationCadence,
+    /// How long after the start of the last frame the stepped animations, whose values hold still,
+    /// owe their next tick. Set by the animation stage and turned into `hold_due` when
+    /// the frame paces its animations.
+    hold_after: Option<std::time::Duration>,
+    /// The moment the stepped animations owe their next tick at.
+    ///
+    /// They ask for no frame at every refresh, so this moment is the only thing that wakes the
+    /// loop for them.
+    hold_due: Option<Instant>,
     /// The display list.
     scene: Scene,
     /// The paint stage's state between frames.
@@ -256,6 +266,11 @@ pub struct Window {
     raster: Arc<dyn zgui_text::GlyphRaster>,
     /// What this frame must redraw.
     damage: DamageSet,
+    /// The largest extent the surface had since the last frame that retired its damage.
+    ///
+    /// Damage outside it names no pixel of the drawn frame or of the next one, so a layout pass
+    /// cuts what it absorbs to it. `None` until the surface is first configured.
+    damage_extent: Option<zgui_geom::Size<i32, zgui_geom::Device>>,
     /// What every fragment pass this frame ran moved rigidly, and whether it moved anything else.
     ///
     /// The input to deciding whether the renderer may translate pixels it already has rather than
@@ -366,8 +381,13 @@ pub struct Window {
     /// gesture *began*: re-deriving it from what is under the pointer now would make every drag
     /// select nothing at all.
     selecting: Option<crate::window::pointer_text::Selecting>,
-    followed_selection: Option<(zgui_dom::NodeKey, zgui_edit::Selection, f32)>,
-    text_scroll: Option<(zgui_vocab::PointerEvent, std::time::Instant)>,
+    /// Where the pointer of the selecting drag is, for the frames that scroll its field.
+    drag_pointer: Option<crate::window::pointer_text::DragPointer>,
+    /// The caret and field the last caret reveal measured.
+    ///
+    /// A reveal runs only when this changes, so a field a person scrolled stays where it is until
+    /// the next edit or caret move.
+    revealed: Option<crate::window::reveal::Revealed>,
     /// Consecutive text presses, separate from generic double-click activations.
     text_clicks: crate::window::pointer_text::TextClicks,
     /// Text an editing command asked to be put on the clipboard, waiting for a turn of the loop
@@ -431,6 +451,11 @@ pub struct Window {
     /// every frame it paints, because text with per-channel coverage has no meaning over a
     /// destination that is not opaque.
     translucent: bool,
+    /// How this window antialiases its text.
+    text_antialiasing: text_aa::TextAntialiasing,
+    /// The stripe order the last frame drew per-channel text coverage for, or `None` when it drew
+    /// one coverage for each pixel.
+    subpixel_order: Option<zgui_render::SubpixelOrder>,
     /// Whether the surface is entirely hidden.
     occluded: bool,
     /// Whether the surface is the one receiving the keyboard.
@@ -441,7 +466,8 @@ pub struct Window {
     ///
     /// A window that has just been opened is treated as focused. Every backend reports focus
     /// arriving rather than being held, so the alternative is a window that answers its first real
-    /// report by doing the work of losing focus it never had.
+    /// report by doing the work of losing focus it never had. A shell window is treated as not
+    /// focused, because the desktop gives it the keyboard with an edge of its own, if at all.
     surface_focused: bool,
     /// The shortcuts of the application menu's actions, shared by every window.
     menu_keys: crate::desktop::MenuKeys,
@@ -520,6 +546,8 @@ pub struct Window {
     binding: Box<dyn HostBinding>,
     /// What to tell about each frame after it has been produced.
     probe: Option<Rc<dyn crate::probe::FrameProbe>>,
+    /// What the last frame did, or `None` before the first frame.
+    last_report: Option<crate::window::frame::FrameReport>,
     /// What the accessibility tree was last told, and what it is owed.
     a11y: zgui_a11y::A11yBuilder,
     /// The elements this frame's fragment pass carried to a new position without changing.
@@ -561,7 +589,9 @@ pub struct Window {
 }
 
 impl Window {
-    /// Opens a window over `surface`, drawn by `renderer`, and builds `view` into it.
+    /// Opens a window over `surface`, drawn by `renderer`, and builds `view` into `document`.
+    ///
+    /// `document` is empty and carries the identity the runtime gave this window.
     ///
     /// # Errors
     ///
@@ -571,7 +601,7 @@ impl Window {
     #[allow(clippy::too_many_arguments)]
     pub fn open(
         surface: Arc<dyn Surface>,
-        document: zgui_dom::DocumentId,
+        document: Document,
         renderer: Box<dyn Renderer>,
         text: Box<dyn TextEngine>,
         raster: Arc<dyn zgui_text::GlyphRaster>,
@@ -584,9 +614,10 @@ impl Window {
         close: Rc<RefCell<crate::commands::CloseCallbacks>>,
         view: impl FnOnce(&mut zgui_view::BuildCx<'_>) -> Box<dyn Anchor>,
     ) -> Self {
-        // The identity the runtime minted for this window. Every node handle carries it, which is
-        // what stops one window's handle resolving inside another window's tree.
-        let document = Rc::new(RefCell::new(Document::with_id(document)));
+        // The document carries the identity the runtime gave this window. Every node handle
+        // carries it, which is what stops one window's handle resolving inside another window's
+        // tree.
+        let document = Rc::new(RefCell::new(document));
         let replaced_images = crate::replaced::IntrinsicTable::new();
         let replaced_surfaces = crate::replaced::IntrinsicTable::new();
         document.borrow_mut().install_replaced_content(Arc::new(
@@ -714,6 +745,8 @@ impl Window {
             frame_clock: zgui_scene::FrameClock::default(),
             animator: zgui_anim::Animator::new(),
             animation: crate::window::anim::cadence::AnimationCadence::parked(),
+            hold_after: None,
+            hold_due: None,
             scene: Scene::new(),
             painter: Painter::new(),
             verify_replays: zgui_layout::invariants::enabled(),
@@ -734,6 +767,7 @@ impl Window {
             budgets: crate::budget::Budgets::new(),
             raster,
             damage: DamageSet::full(),
+            damage_extent: None,
             rigid_moves: zgui_layout::fragment::diff::RigidMoves::default(),
             damage_before_layout: DamageSet::new(),
             damage_after_layout: DamageSet::new(),
@@ -759,8 +793,8 @@ impl Window {
             focus_modality: zgui_input::FocusSource::Keyboard,
             vertical_goal: None,
             selecting: None,
-            followed_selection: None,
-            text_scroll: None,
+            drag_pointer: None,
+            revealed: None,
             text_clicks: crate::window::pointer_text::TextClicks::default(),
             clipboard: Vec::new(),
             wants_paste: Vec::new(),
@@ -776,6 +810,8 @@ impl Window {
             scale,
             scheme: viewport.scheme,
             translucent: false,
+            text_antialiasing: text_aa::TextAntialiasing::default(),
+            subpixel_order: None,
             occluded: false,
             surface_focused: true,
             menu_keys: crate::desktop::MenuKeys::default(),
@@ -800,6 +836,7 @@ impl Window {
             timers,
             binding: Box::new(NoBinding),
             probe: options.probe.clone(),
+            last_report: None,
             a11y: zgui_a11y::A11yBuilder::new(),
             a11y_moves: Vec::new(),
             moved_spaces: Vec::new(),
@@ -1327,6 +1364,19 @@ impl Window {
             self.translucent = translucent;
             self.reconfigure = true;
         }
+    }
+
+    /// States how this window antialiases its text, from the next frame on.
+    pub fn set_text_antialiasing(&mut self, antialiasing: text_aa::TextAntialiasing) {
+        if self.text_antialiasing != antialiasing {
+            self.text_antialiasing = antialiasing;
+            self.request_frame();
+        }
+    }
+
+    /// Returns how this window antialiases its text.
+    pub fn text_antialiasing(&self) -> text_aa::TextAntialiasing {
+        self.text_antialiasing
     }
 
     /// Returns `true` where this window is drawn translucent.

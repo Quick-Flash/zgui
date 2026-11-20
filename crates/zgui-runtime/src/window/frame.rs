@@ -26,7 +26,7 @@
 //! testing under a stationary pointer** is what stops a dropdown that opens under the cursor from
 //! never being hovered.
 
-use std::time::Instant;
+use web_time::Instant;
 
 use zgui_bits::{DamageSet, Dirty};
 use zgui_geom::{Device, DevicePx, Size};
@@ -46,11 +46,19 @@ use crate::window::Window;
 const POOLED_RESTYLE_MIN_NODES: usize = 64;
 
 /// What one frame did.
+///
+/// Equality compares the wall times too, so two reports of the same work are seldom equal.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct FrameReport {
-    /// Wall time spent processing the frame; excludes waiting for its scheduled start.
+    /// Wall time from the start of the frame to the probe call.
+    ///
+    /// Does not include the wait before the frame starts.
     pub elapsed: std::time::Duration,
-    /// Paint and renderer submission wall time, including any driver wait. Not GPU execution time.
+    /// Wall time of paint and renderer submission, including a wait for the surface.
+    ///
+    /// Does not include GPU execution, or the present of a held frame in
+    /// [`Window::present_held`].
     pub paint_elapsed: std::time::Duration,
     /// What the renderer made of it.
     pub outcome: FrameOutcome,
@@ -135,6 +143,11 @@ impl Window {
             zgui_platform::SurfaceEvent::ColorSchemeChanged(scheme) => {
                 self.set_platform_color_scheme(*scheme)
             }
+            // The first frame reached the screen. Nothing changes in what the window draws.
+            zgui_platform::SurfaceEvent::Presented => {
+                self.handle.set_presented();
+                false
+            }
             // Keyboard focus is a level as well, and it is one whose *edges* do work that must not
             // be done twice: losing it settles the field being typed into, which is the event a
             // form validates on, and a window system that re-states the focus it already reported
@@ -144,6 +157,11 @@ impl Window {
                 self.surface_focused = *focused;
                 self.handle.set_focused(*focused);
                 moved
+            }
+            // The locks are a level the window reports; the change also travels with the input.
+            zgui_platform::SurfaceEvent::ModifiersChanged(modifiers) => {
+                self.handle.set_lock_keys(*modifiers);
+                true
             }
             // A drag edge, where a desktop reports one. The release with a reconfiguration still
             // owed is the one edge that buys a frame of its own: the level the window holds is
@@ -206,6 +224,13 @@ impl Window {
         }
     }
 
+    /// What the last frame did, or `None` before the first frame.
+    ///
+    /// A probe reads the report of the frame that has just ended.
+    pub fn last_frame_report(&self) -> Option<FrameReport> {
+        self.last_report
+    }
+
     /// Presents the frame the renderer holds, now that the platform is ready for it.
     ///
     /// The frame was composed and its damage retired when it ran. This is only the copy to the
@@ -246,8 +271,17 @@ impl Window {
         }
     }
 
-    /// Shows the surface once its first frame has reached it.
+    /// Leaves the surface hidden after its first frame, for a window the application shows itself.
+    pub(crate) fn keep_hidden(&mut self) {
+        self.first_frame = false;
+    }
+
+    /// Shows the surface once its first frame has reached it. Where the platform reports no
+    /// presentation, that frame also counts as shown.
     fn show_first_frame(&mut self, outcome: FrameOutcome) {
+        if matches!(outcome, FrameOutcome::Presented(_)) && !self.surface.reports_presentation() {
+            self.handle.set_presented();
+        }
         if self.first_frame && matches!(outcome, FrameOutcome::Presented(_)) {
             // A surface is shown by its first frame, never before it: showing an unpainted one is
             // what produces a flash of empty window at launch.
@@ -290,7 +324,7 @@ impl Window {
 
     /// The frame itself, with the window's scope already current.
     fn run_frame(&mut self, clock: &dyn Clock) -> FrameReport {
-        let measured_start = Instant::now();
+        let started = Instant::now();
         use zgui_profile::latency::mark;
         mark("f.begin");
         let now = clock.now();
@@ -299,9 +333,6 @@ impl Window {
         self.note_frame_moment(timestamp);
 
         self.frame_started();
-        // A Wayland configure can change maximized/fullscreen without changing extent.
-        // Refresh before input and reactive work so client decorations follow that state.
-        self.handle.refresh_window_state();
         self.gate.begin_frame();
         self.document.borrow().begin_frame();
         // Both are this frame's answers about this frame's movement, and a frame that inherited
@@ -344,6 +375,7 @@ impl Window {
         // from the surface this frame will actually present to.
         mark("f.reconfigure");
         self.reconfigure_surface();
+        self.settle_text_coverage();
         mark("f.device");
         self.device_epoch();
         // Frame callbacks before the animate stage and the flush, with the moment this frame is
@@ -500,7 +532,6 @@ impl Window {
         // that is drawn once and then never changes again.
         mark("f.caret");
         self.plan_caret(now);
-        self.follow_text_caret();
         // After layout and the caret plan, before paint emission: the embed host binds producers
         // to laid-out boxes, attaches whatever they presented, and absorbs the damage the emit
         // walk below is gated on. See the `embed` module for the whole argument.
@@ -537,6 +568,7 @@ impl Window {
         // been presented.
         if outcome.retires_damage() {
             self.damage = DamageSet::new();
+            self.damage_extent = self.renderer.target().map(|target| target.size);
             // The chunk notes were consumed by the same submission. A skipped frame keeps them
             // for the next drawn one, and anything noted after this point — a budget eviction —
             // stands until then.
@@ -650,10 +682,10 @@ impl Window {
         self.show_first_frame(outcome);
 
         // Last, with everything this frame produced still standing: the scene it emitted, the
-        // damage it answered, the layout it computed. The handle is cloned out first because the
-        // probe is handed the window it is stored on.
+        // damage it answered, the layout it computed, and this report. The handle is cloned out
+        // first because the probe is handed the window it is stored on.
         let report = FrameReport {
-            elapsed: measured_start.elapsed(),
+            elapsed: started.elapsed(),
             paint_elapsed,
             outcome,
             needs_another_frame,
@@ -661,6 +693,7 @@ impl Window {
             timers_fired,
             animated,
         };
+        self.last_report = Some(report);
         if let Some(probe) = self.probe.clone() {
             probe.frame_reported(self, &report);
         }
@@ -729,6 +762,9 @@ impl Window {
         let blink = (!(self.occluded || self.starved))
             .then(|| self.carets.next_flip(now))
             .flatten();
+        // The next step boundary of the stepped animations, excluded on a hidden or starved
+        // surface for the reason the blink is.
+        let hold = self.hold_due.filter(|_| !(self.occluded || self.starved));
         // A frame being held back owes a moment of its own, and it is the only source that owes one
         // for a frame that has already been asked for. Without it a window whose whole reason to
         // draw is the input it has already queued is held and never woken again.
@@ -745,6 +781,7 @@ impl Window {
             self.gesture_deadline(),
             resize,
             blink,
+            hold,
             held,
             retry,
         ]
@@ -851,7 +888,7 @@ impl Window {
     /// marked by both the cheap and the expensive animation paths rather than only by the one that
     /// restyles.
     pub fn is_animating(&self) -> bool {
-        if self.is_scrolling() {
+        if self.is_scrolling() || self.is_drag_scrolling() {
             return true;
         }
         // An embedded producer that asked to run every refresh is an animation by any measure the
@@ -916,6 +953,49 @@ impl Window {
         due.len()
     }
 
+    /// Decides which coverage this frame draws its text with.
+    ///
+    /// Per-channel coverage needs a device that can blend it, an opaque surface, and a display
+    /// with horizontal stripes in a known order. The display is asked on every frame, because a
+    /// window moves between displays. A change of the answer changes every glyph on the surface,
+    /// so the whole surface is damaged.
+    fn settle_text_coverage(&mut self) {
+        let order = if self.renderer.capabilities().subpixel_text && !self.translucent {
+            self.text_antialiasing
+                .order(self.surface.subpixel_layout(), self.scale)
+        } else {
+            None
+        };
+        if order == self.subpixel_order {
+            return;
+        }
+        // Said on every change, because nothing on the screen names the reason for the coverage.
+        tracing::info!(
+            target: "zgui::runtime",
+            surface = ?self.surface.id(),
+            setting = ?self.text_antialiasing,
+            layout = ?self.surface.subpixel_layout(),
+            scale = self.scale,
+            translucent = self.translucent,
+            device = self.renderer.capabilities().subpixel_text,
+            "text is drawn with {}",
+            match order {
+                Some(zgui_render::SubpixelOrder::RedToBlue) => {
+                    "one coverage for each colour stripe, red to blue"
+                }
+                Some(zgui_render::SubpixelOrder::BlueToRed) => {
+                    "one coverage for each colour stripe, blue to red"
+                }
+                None => "one coverage for each pixel",
+            }
+        );
+        self.subpixel_order = order;
+        if let Some(order) = order {
+            self.renderer.set_subpixel_order(order);
+        }
+        self.damage = DamageSet::full();
+    }
+
     /// Reconfigures the renderer for the surface, when the surface moved.
     ///
     /// The extent is read from the **surface** and never from the event that asked for the frame.
@@ -930,7 +1010,15 @@ impl Window {
         self.configured += 1;
         // Before the swapchain rebuild rather than after it, so the interval that paces the next
         // configure is a frame period of the output and not a frame period plus this frame's cost.
-        self.pace.answered(self.clock.now());
+        let now = self.clock.now();
+        let interval = self.refresh_interval();
+        // The last refresh at or before now, so the pace follows the output.
+        let refresh = self
+            .surface
+            .presentation_timing()
+            .and_then(|timing| timing.refresh_after(now))
+            .and_then(|next| next.checked_sub(interval));
+        self.pace.answered(now, interval, refresh);
         let size = self.surface.size();
         zgui_profile::latency::note_with("w.cfg", || {
             format!(
@@ -955,6 +1043,14 @@ impl Window {
         };
         let was = self.renderer.target();
         self.renderer.configure(target);
+        let widest = |a: Size<i32, zgui_geom::Device>, b: Size<i32, zgui_geom::Device>| {
+            Size::new(a.width.max(b.width), a.height.max(b.height))
+        };
+        let extent = was.map_or(target.size, |was| widest(was.size, target.size));
+        self.damage_extent = Some(
+            self.damage_extent
+                .map_or(extent, |held| widest(held, extent)),
+        );
         // What a resize changes is what the layout moves, which damages itself, and the band the
         // larger extent exposes. A change of scale or opacity changes every pixel there is, and so
         // does a first configure, which has no picture to keep.
@@ -1012,8 +1108,8 @@ impl Window {
             return false;
         }
         // What the handle reports, from the size that was actually taken. Maximising and leaving
-        // full screen both resize the window, so this is where those move too — no desktop reports
-        // them as events of their own.
+        // full screen usually resize the window, so the state is read here too. A change that
+        // keeps the size comes as a `SurfaceStateChanged` wake.
         self.handle.set_geometry(size, scale);
         self.handle.refresh_window_state();
         let admitted = self.pace.admit(self.clock.now(), self.refresh_interval());
@@ -1149,6 +1245,9 @@ impl Window {
         let applied = super::brushes::apply(&mut self.text_slots, self.text.text_paints(), updates);
         super::brushes::publish(&self.text_slots, self.text.text_paints());
         self.brushes_moved |= applied.recoloured;
+        if !applied.rewritten.is_empty() {
+            self.redraw_inline_text(&applied.rewritten);
+        }
         let split = applied.split;
         if split.is_empty() {
             return;
@@ -1348,6 +1447,8 @@ impl Window {
         // After the clamp, so a scroll is measured against the extents this pass produced, and
         // before the fragment pass, which composes what it moves.
         self.carry_out_owed_scrolls();
+        // For the same reason: the frame that moves the caret then also shows it.
+        self.reveal_caret();
         zgui_profile::latency::note_with("w.laidout", || {
             format!(
                 "asked={width}x{height} scale={} surface={}x{} ran={relaid_out}",
@@ -1388,6 +1489,12 @@ impl Window {
         }
         self.layout_passes += 1;
         counter::bump(Counter::LayoutPasses);
+        // Damage the pass finds outside every extent the surface has had since the last drawn
+        // frame is cut away as it is absorbed, rather than merged first and clipped after.
+        self.damage.set_bound(
+            self.damage_extent
+                .map(|extent| zgui_geom::Rect::new(zgui_geom::Point::new(0, 0), extent)),
+        );
         let mut moved = zgui_layout::fragment::diff::rebuild_in(
             &mut self.diff_scratch,
             &mut layout,
@@ -1500,7 +1607,9 @@ impl Window {
         let retired = self.layout.borrow_mut().drain_retired_paint();
         // Read before the sink is borrowed, because what the device can do changes what is
         // *emitted* and not only how it is drawn.
-        let capabilities = self.renderer.capabilities();
+        let mut capabilities = self.renderer.capabilities();
+        // What the device can blend is narrowed to what this window draws on its display.
+        capabilities.subpixel_text = self.subpixel_order.is_some();
         // Decided inside the borrow below, performed after it: the copy belongs in the renderer's
         // own frame, and the renderer is not reachable while the layout store is borrowed.
         let shift: Option<zgui_render::ScrollShift>;
@@ -1554,9 +1663,10 @@ impl Window {
                 self.scale,
                 &self.host.placements(),
             );
-            if super::damage_coalesce::coalesce(&mut self.damage) {
-                // The larger region must be expanded and emitted too; merging
-                // only at renderer submission would omit its stationary content.
+            // Close rectangles merge before the emit walk, because the walk culls against the
+            // damage: a merge at the renderer would clear the pixels between them and draw nothing
+            // there. The merged region can reach a new read extent, so it is expanded again.
+            if self.damage.coalesce_dense() {
                 zgui_paint::expand(
                     &layout,
                     &mut self.damage,
@@ -1584,7 +1694,7 @@ impl Window {
                     pool,
                     zgui_paint::GlyphPrediction {
                         scale: self.scale,
-                        subpixel: capabilities.subpixel_text && !self.translucent,
+                        subpixel: capabilities.subpixel_text,
                     },
                 );
             }
@@ -1659,6 +1769,9 @@ impl Window {
                 scrollbars: zgui_paint::emit::scrollbar::paint_for(
                     self.scheme == zgui_style::ColorScheme::Dark,
                 ),
+                // A full set means the surface and nothing more. Without the bound, the walk visits
+                // every fragment of the document, also the rows of a long scroll container.
+                surface: Some(zgui_geom::Rect::new(zgui_geom::Point::new(0, 0), viewport)),
                 ..PaintInput::new(&layout, &self.damage)
             };
             zgui_profile::latency::note_with("d.postexpand", || {

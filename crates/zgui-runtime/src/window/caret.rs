@@ -5,7 +5,7 @@
 //! clear: a caret that changed phase changes no fragment's geometry, so nothing else in the frame
 //! would ever put its pixels into the damage.
 
-use std::time::Instant;
+use web_time::Instant;
 
 use zgui_geom::{Device, DevicePx, Point, Rect};
 use zgui_layout::FragmentKind;
@@ -55,14 +55,10 @@ impl Window {
         // candidate window one character behind the text being composed — and answering it when
         // the surface hands the keyboard back reports no rectangle at all, because the frame that
         // plans one has not run yet. The surface is told only when the answer really changed.
-        // A newly mounted field can be focused before it has layout boxes. In that
-        // case the focus command could not enable native text input, and there is
-        // no IME target for report_caret() to update. Retry now that layout exists.
-        // The IME state deduplicates unchanged reports. Keep background windows
-        // disabled even though their document still remembers the focused field.
-        if self.surface_focused {
-            self.report_text_input();
-        }
+        //
+        // This reports the full text input state. A field that gets focus before it has a box
+        // cannot enable text input when focus moves, and this is the first moment it can.
+        self.report_text_input();
     }
 
     /// This frame's plan, and the absolute rectangles it will draw.
@@ -217,49 +213,5 @@ impl Window {
         layout
             .inline_resolution(box_)
             .map(|resolution| resolution.paragraph)
-    }
-}
-
-impl Window {
-    /// Follow the actual shaped caret, only when selection or field width changes.
-    /// Manual scrolling therefore stays put until the next edit or caret move.
-    pub(crate) fn follow_text_caret(&mut self) {
-        let Some(node) = self.router.interaction().focus.focused() else {
-            self.followed_selection = None;
-            return;
-        };
-        let Some(selection) = self.editors.shown_selection(node) else {
-            return;
-        };
-        let Some(bounds) =
-            zgui_view::ViewHost::window_box(self.host.as_ref(), zgui_view_dom::id::to_view(node))
-        else {
-            return;
-        };
-        let key = (node, selection, bounds.size.width.0);
-        if self.followed_selection == Some(key) {
-            return;
-        }
-        let Some(caret) = self.caret_rect() else {
-            return;
-        };
-        self.followed_selection = Some(key);
-        let margin = 8.0 * self.scale;
-        let left = bounds.origin.x.0 + margin;
-        let right = bounds.origin.x.0 + bounds.size.width.0 - margin;
-        let delta = if selection.focus == 0 {
-            -self.scroll.borrow().offset_of(node).x.0
-        } else if caret.origin.x.0 < left {
-            caret.origin.x.0 - left
-        } else {
-            (caret.origin.x.0 + caret.size.width.0 - right).max(0.0)
-        };
-        if delta.abs() > 0.5 {
-            self.carry_out_scroll(
-                zgui_view_dom::id::to_view(node),
-                zgui_view::ScrollTarget::By(Point::new(DevicePx(delta), DevicePx(0.0))),
-                zgui_view::ScrollBehavior::Instant,
-            );
-        }
     }
 }

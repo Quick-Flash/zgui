@@ -10,6 +10,11 @@
 //! opened by the *first* surface rather than at construction, because whether an adapter is usable
 //! is only known against something to present to.
 //!
+//! The instances live as long as the graphics. A window that closes destroys its swap chain and
+//! its surface, and never an instance that another window presents through. Some drivers need
+//! this: on the NVIDIA Vulkan driver 610.43 under Wayland, the destruction of one instance breaks
+//! the swap chains of every other instance on the same display.
+//!
 //! # What is shared, and what is not
 //!
 //! Shared: the device, queue and adapter ([`Gpu`]), and the pipelines. Pipelines are keyed by
@@ -210,6 +215,81 @@ impl SharedGraphics {
             primary: RefCell::new(Some(DeviceState::new(gpu))),
             fallbacks: RefCell::new(Vec::new()),
         }))
+    }
+
+    /// Opens the device for `canvas` and does not block the thread while it opens.
+    ///
+    /// For a browser, which resolves an adapter request and a device request only after the caller
+    /// returns to its event loop. The tiers of `backends` are tried in order: WebGPU first, then
+    /// WebGL 2. The WebGPU tier does not touch `canvas`, because a canvas keeps the first context
+    /// type it gives out, and a canvas that gave out a WebGPU context cannot give a WebGL 2
+    /// context to the fallback. The WebGL 2 tier selects its adapter with a surface on `canvas`,
+    /// because a WebGL adapter is a context of one canvas.
+    ///
+    /// `subpixel_text` is as for [`Gpu::open_async`].
+    ///
+    /// The graphics that come back behave like adopted ones (see [`SharedGraphics::with_gpu`]):
+    /// they open no second device, because opening one blocks. After a loss, the caller awaits
+    /// this function again and gives the new device to [`SharedGraphics::adopt`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GpuUnavailable`] with one entry for each tier that was refused.
+    pub async fn open_async(
+        backends: wgpu::Backends,
+        canvas: impl Into<wgpu::SurfaceTarget<'static>> + Clone,
+        subpixel_text: bool,
+    ) -> Result<Self, GpuUnavailable> {
+        let mut unavailable = GpuUnavailable::new();
+        for tier in adapter::tiers(backends) {
+            let name = if tier.intersects(wgpu::Backends::GL) {
+                "WebGL 2"
+            } else {
+                "WebGPU"
+            };
+            let instance = wgpu::Instance::new(adapter::instance_descriptor(tier));
+            let surface = if tier.intersects(wgpu::Backends::GL) {
+                match instance.create_surface(canvas.clone()) {
+                    Ok(surface) => Some(surface),
+                    Err(error) => {
+                        unavailable = unavailable.rejected(name, error.to_string());
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+            let options = wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
+                compatible_surface: surface.as_ref(),
+                ..Default::default()
+            };
+            let selected = match instance.request_adapter(&options).await {
+                Ok(selected) => selected,
+                Err(error) => {
+                    unavailable = unavailable.rejected(name, error.to_string());
+                    continue;
+                }
+            };
+            // The surface selected the adapter. The renderer makes its own surface on the canvas.
+            drop(surface);
+            match Gpu::open_async(instance, selected, subpixel_text).await {
+                Ok(gpu) => {
+                    let gpu = Arc::new(gpu);
+                    return Ok(Self(Rc::new(Shared {
+                        instances: adapter::Instances::existing(gpu.instance().clone(), tier),
+                        backends: tier,
+                        extensions: Vec::new(),
+                        adopted: true,
+                        primary: RefCell::new(Some(DeviceState::new(gpu))),
+                        fallbacks: RefCell::new(Vec::new()),
+                    })));
+                }
+                Err(reason) => unavailable = unavailable.rejected(name, reason),
+            }
+        }
+        Err(unavailable)
     }
 
     /// Makes `gpu` the primary device, in place of the current one.
@@ -441,7 +521,7 @@ impl SharedGraphics {
         }
         Ok(self.assemble(
             state,
-            Presentation::Supplied(supplied),
+            Presentation::Supplied(Box::new(supplied)),
             target,
             None,
             Origin::Supplied,
@@ -602,15 +682,35 @@ fn present_on(
     {
         return Err(Rejected::Incompatible);
     }
-    let scope = state
-        .gpu
-        .device()
-        .push_error_scope(wgpu::ErrorFilter::Validation);
-    let presentation =
-        Presentation::Surface(Box::new(ConfiguredSurface::new(&state.gpu, surface, setup)));
-    match futures::executor::block_on(scope.pop()) {
-        None => Ok(presentation),
-        Some(error) => Err(Rejected::Failed(error.to_string())),
+    // A browser reports a validation error only after this thread returns to its event loop, so
+    // a scope cannot be read here. The error goes to the device's uncaptured-error handler there.
+    #[cfg(target_arch = "wasm32")]
+    {
+        Ok(Presentation::Surface(Box::new(
+            ConfiguredSurface::for_window(
+                &state.gpu,
+                surface,
+                setup,
+                crate::target::native::NativeWindow::of(window.clone()),
+            ),
+        )))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let scope = state
+            .gpu
+            .device()
+            .push_error_scope(wgpu::ErrorFilter::Validation);
+        let presentation = Presentation::Surface(Box::new(ConfiguredSurface::for_window(
+            &state.gpu,
+            surface,
+            setup,
+            crate::target::native::NativeWindow::of(window.clone()),
+        )));
+        match futures::executor::block_on(scope.pop()) {
+            None => Ok(presentation),
+            Some(error) => Err(Rejected::Failed(error.to_string())),
+        }
     }
 }
 
@@ -619,6 +719,10 @@ enum Rejected {
     /// The adapter cannot present to it, and another adapter can try.
     Incompatible,
     /// The adapter accepted it and then failed to configure it.
+    #[cfg_attr(
+        target_arch = "wasm32",
+        expect(dead_code, reason = "a browser reports a configure failure later")
+    )]
     Failed(String),
 }
 
